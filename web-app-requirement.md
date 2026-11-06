@@ -6,7 +6,7 @@ The pages follow the prototype at [capstone-ipe.github.io/analysis](https://caps
 
 ## Sign in
 
-The merchant signs in with Google. The website remembers that sign-in and refreshes it when it expires. The Google secret stays off the website.
+The merchant signs in with Google. The website remembers that sign-in and refreshes it when it expires. The Google secret stays off the website. Reach out to Rupesh Sasne for the Google keys.
 
 This sign-in is for the merchant. It is separate from the sign-in Claude and ChatGPT use to reach the onboarding service.
 
