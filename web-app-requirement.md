@@ -1,14 +1,20 @@
 # Web app requirements
 
-A merchant applies for one shop in one conversation. This document says what the website must do. It does not say how the website talks to the chat service.
+A merchant applies for one shop in one conversation. The pages follow the prototype at [capstone-ipe.github.io/analysis](https://capstone-ipe.github.io/analysis/). The chat model is not part of this work. It is not chosen yet.
 
-The pages follow the prototype at [capstone-ipe.github.io/analysis](https://capstone-ipe.github.io/analysis/). The chat model is not part of this work. It is not chosen yet.
+## What is expected
 
-## Sign in
+1. **Google sign-in.** The merchant signs in with Google. The website remembers that sign-in and refreshes it when it expires. The Google secret stays off the website. Reach out to Rupesh Sasne for the Google keys. This sign-in is for the merchant. It is separate from the sign-in Claude and ChatGPT use to reach the onboarding service.
 
-The merchant signs in with Google. The website remembers that sign-in and refreshes it when it expires. The Google secret stays off the website. Reach out to Rupesh Sasne for the Google keys.
+2. **Contracts between the website and the chat service.** Write the messages for three things: sending a chat message, loading the past conversation, and uploading a file. This document names that work. It does not define those messages.
 
-This sign-in is for the merchant. It is separate from the sign-in Claude and ChatGPT use to reach the onboarding service.
+3. **The chat, from the first question through the result.** One shop in one conversation. One question at a time. The summary before submit. The result card after submit. A refresh shows the same conversation.
+
+4. **File uploading.** A PDF, JPG, or PNG for the document being asked for. After the result, each missing document still has an upload. Sending the file updates the result, and the review number stays the same.
+
+5. **Suggestion pills.** Short buttons under the question for the common answers, and for "I don't have this", "Why is this needed?", and "Submit" when that is the choice.
+
+6. **A reply animation.** While a reply is on its way, the conversation shows a short animation. The merchant waits. The next box to type in appears when the reply is on the page.
 
 ## One shop, one conversation
 
