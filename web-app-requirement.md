@@ -32,7 +32,7 @@ The merchant can type an answer. Asking why something is needed gets an explanat
 
 A document is a PDF, JPG, or PNG. The merchant can also say they do not have it. Before submit, the page offers the one document that is still being asked for.
 
-When the questions are done, the website reads the application back: shop name, city, business type, monthly volume, payment methods, whether payer phone numbers are stored, each document, and the note. Answers already given stay as given. A request to change the city, the volume, or any other saved answer does not rewrite it.
+When the questions are done, the website reads the application back: shop name, city, business type, monthly volume, payment methods, whether payer phone numbers are stored, each document, and the note. Before submit, the merchant can replace a saved answer, including the monthly volume, with a new figure. After the result, saved answers stay as stored.
 
 Submit is available only when every required document is uploaded or the merchant has said they do not have it. The note is optional.
 
