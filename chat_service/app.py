@@ -34,7 +34,7 @@ def error(code, message, status):
 
 def create_app(config=None):
     cfg = {
-        "TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", "dev-chat-token"),
+        "TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", ""),
         "DB": os.environ.get("CHAT_DB", os.path.join(HERE, "data", "chat.db")),
         "UPLOADS": os.environ.get("CHAT_UPLOADS", os.path.join(HERE, "data", "uploads")),
         "AGENT": os.environ.get("CHAT_AGENT", "chat_service.agent.rules_agent:RulesAgent"),
@@ -70,7 +70,8 @@ def create_app(config=None):
         if request.path == "/v1/health":
             return None
         auth = request.headers.get("Authorization", "")
-        if not hmac.compare_digest(auth, f"Bearer {cfg['TOKEN']}"):
+        token = cfg["TOKEN"]
+        if not token or not hmac.compare_digest(auth, f"Bearer {token}"):
             return error("unauthorized", "Missing or wrong service token.", 401)
         if not request.headers.get("X-Merchant-Id"):
             return error("no_merchant", "X-Merchant-Id header is required.", 400)

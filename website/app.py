@@ -30,7 +30,7 @@ def create_app(config=None):
         "GOOGLE_REDIRECT_URI": os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/callback"),
         "DEV_LOGIN": os.environ.get("DEV_LOGIN", ""),
         "CHAT_SERVICE_URL": os.environ.get("CHAT_SERVICE_URL", "http://127.0.0.1:5001"),
-        "CHAT_SERVICE_TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", "dev-chat-token"),
+        "CHAT_SERVICE_TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", ""),
         "USERS_DB": os.environ.get("WEBSITE_DB", os.path.join(HERE, "data", "website.db")),
         "COOKIE_SECURE": os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
         "CHAT_HTTP": None, "GOOGLE_HTTP": None,
