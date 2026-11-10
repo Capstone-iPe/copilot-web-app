@@ -8,8 +8,8 @@ The requirements name three contracts: **send a chat message**, **load the past 
 
 | Header | Value |
 |---|---|
-| `Authorization` | `Bearer <CHAT_SERVICE_TOKEN>`: the secret shared by the website and the chat service |
-| `X-Merchant-Id` | The signed-in merchant's id, set by the website after checking the sign-in (e.g. `google:1234567890`) |
+| `Authorization` | `Bearer <Google access token>` when the merchant signed in with Google. The chat service asks Google whether that token is still valid. For development sign-in only: `Bearer <CHAT_SERVICE_TOKEN>`. |
+| `X-Merchant-Id` | The signed-in merchant's id. For Google this is `google:` plus Google's `sub`, and it must match the bearer. |
 
 A merchant only ever sees their own conversations. Someone else's conversation id returns `404`.
 

@@ -1,7 +1,8 @@
 """The chat service: holds every conversation and runs the agent.
 
-It implements the contracts in contracts/CONTRACTS.md. Only the website calls it, with a shared
-secret (CHAT_SERVICE_TOKEN) and the signed-in merchant's id in the X-Merchant-Id header.
+It implements the contracts in contracts/CONTRACTS.md. The website calls it with the merchant's
+Google access token when Google sign-in is on, or with CHAT_SERVICE_TOKEN for development
+sign-in. Every Google bearer is checked with Google before the request is handled.
 
     python -m chat_service.app        # listens on http://127.0.0.1:5001
 
@@ -18,6 +19,7 @@ import uuid
 from flask import Flask, jsonify, request
 from werkzeug.utils import secure_filename
 
+from .google_auth import GoogleTokenChecker, allowed_emails, audiences
 from .onboarding_client import OnboardingClient
 from .store import Store
 
@@ -35,6 +37,11 @@ def error(code, message, status):
 def create_app(config=None):
     cfg = {
         "TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", ""),
+        "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID", ""),
+        "GOOGLE_ALLOWED_AUDIENCES": os.environ.get("GOOGLE_ALLOWED_AUDIENCES", ""),
+        "GOOGLE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ALLOWED_EMAILS", ""),
+        "GOOGLE_HTTP": None,
+        "GOOGLE_CHECKER": None,
         "DB": os.environ.get("CHAT_DB", os.path.join(HERE, "data", "chat.db")),
         "UPLOADS": os.environ.get("CHAT_UPLOADS", os.path.join(HERE, "data", "uploads")),
         "AGENT": os.environ.get("CHAT_AGENT", "chat_service.agent.rules_agent:RulesAgent"),
@@ -47,6 +54,13 @@ def create_app(config=None):
     store = Store(cfg["DB"])
     onboarding = OnboardingClient(store)
     locks = {}
+    google_checker = cfg["GOOGLE_CHECKER"]
+    if google_checker is None and cfg["GOOGLE_CLIENT_ID"].strip():
+        google_checker = GoogleTokenChecker(
+            audiences(cfg["GOOGLE_CLIENT_ID"], cfg["GOOGLE_ALLOWED_AUDIENCES"]),
+            allowed_emails(cfg["GOOGLE_ALLOWED_EMAILS"]),
+            cfg["GOOGLE_HTTP"],
+        )
 
     def make_agent():
         mod, cls = cfg["AGENT"].split(":")
@@ -64,18 +78,32 @@ def create_app(config=None):
                 "steps": v["steps"], "messages": store.messages(row["id"]), "prompt": v["prompt"], "result": v["result"],
                 "created_at": row["created_at"], "updated_at": store.get_conversation(row["id"])["updated_at"]}
 
+    def bearer_value(header: str) -> str:
+        if header.lower().startswith("bearer "):
+            return header[7:].strip()
+        return ""
+
     # ------------------------------------------------------------ guards
     @app.before_request
     def check_caller():
         if request.path == "/v1/health":
             return None
         auth = request.headers.get("Authorization", "")
-        token = cfg["TOKEN"]
-        if not token or not hmac.compare_digest(auth, f"Bearer {token}"):
-            return error("unauthorized", "Missing or wrong service token.", 401)
-        if not request.headers.get("X-Merchant-Id"):
+        token = bearer_value(auth)
+        merchant = request.headers.get("X-Merchant-Id", "").strip()
+        if not merchant:
             return error("no_merchant", "X-Merchant-Id header is required.", 400)
-        return None
+        if google_checker is not None:
+            identity = google_checker.inspect(token)
+            if identity is not None:
+                expected = "google:" + identity.subject
+                if merchant != expected:
+                    return error("unauthorized", "Merchant id does not match the Google sign-in.", 401)
+                return None
+        service = cfg["TOKEN"]
+        if service and hmac.compare_digest(auth, f"Bearer {service}"):
+            return None
+        return error("unauthorized", "Missing or wrong bearer token.", 401)
 
     def own(cid):
         row = store.get_conversation(cid)

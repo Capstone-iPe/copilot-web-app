@@ -8,8 +8,9 @@ How it works, step by step:
   4. We ask Google who the person is (their id, email, name) and remember them in our database.
      The browser only gets a signed session cookie that says "this is user X".
   5. Google's access token expires after about an hour. Before calling the chat service we check
-     it, and if it has expired we use the refresh token to get a new one. If Google refuses
-     (for example the merchant removed access), the merchant is signed out and asked to sign in again.
+     it, and if it has expired we use the refresh token to get a new one. That same Google access
+     token is the bearer the chat service validates with Google. If Google refuses (for example
+     the merchant removed access), the merchant is signed out and asked to sign in again.
 
 Without Google keys (GOOGLE_CLIENT_ID empty) the site offers a clearly marked development sign-in,
 so the team can run everything before the keys from Rupesh arrive. Turn it off with DEV_LOGIN=0.

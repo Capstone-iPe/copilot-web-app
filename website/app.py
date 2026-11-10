@@ -73,6 +73,12 @@ def create_app(config=None):
         status, body = status_body
         return jsonify(body), status
 
+    def bearer_for(user):
+        """Google users send Google's access token. Development sign-in uses the shared token."""
+        if user.get("provider") == "google" and user.get("access_token"):
+            return user["access_token"]
+        return cfg["CHAT_SERVICE_TOKEN"]
+
     def api(fn):
         """Wrap a /api route: require sign-in, block cross-site posts, map chat-service outages."""
         def wrapper(*a, **kw):
@@ -153,23 +159,30 @@ def create_app(config=None):
     @app.get("/api/conversations")
     @api
     def list_conversations(user):
-        return relay(chat.list_conversations(user["id"]))
+        return relay(chat.list_conversations(user["id"], bearer_for(user)))
 
     @app.post("/api/conversations")
     @api
     def create_conversation(user):
-        return relay(chat.create_conversation(user["id"]))
+        return relay(chat.create_conversation(user["id"], bearer_for(user)))
 
     @app.get("/api/conversations/<cid>")
     @api
     def load_conversation(user, cid):
-        return relay(chat.load_conversation(user["id"], cid))
+        return relay(chat.load_conversation(user["id"], cid, bearer_for(user)))
 
     @app.post("/api/conversations/<cid>/messages")
     @api
     def send_message(user, cid):
         body = request.get_json(silent=True) or {}
-        return relay(chat.send_message(user["id"], cid, body.get("text", ""), body.get("action"), body.get("client_message_id")))
+        return relay(chat.send_message(
+            user["id"],
+            cid,
+            body.get("text", ""),
+            body.get("action"),
+            body.get("client_message_id"),
+            bearer_for(user),
+        ))
 
     @app.post("/api/conversations/<cid>/files")
     @api
@@ -179,8 +192,15 @@ def create_app(config=None):
             return api_error("no_file", "Choose a file.", 400)
         if not f.filename.lower().endswith(ACCEPTED):
             return api_error("unsupported_type", "Only PDF, JPG and PNG files are accepted.", 415)
-        return relay(chat.upload_file(user["id"], cid, request.form.get("document", ""), f.filename, f.stream,
-                                      f.mimetype or "application/octet-stream"))
+        return relay(chat.upload_file(
+            user["id"],
+            cid,
+            request.form.get("document", ""),
+            f.filename,
+            f.stream,
+            f.mimetype or "application/octet-stream",
+            bearer_for(user),
+        ))
 
     @app.errorhandler(413)
     def too_big(_e):

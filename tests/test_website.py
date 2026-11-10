@@ -130,6 +130,11 @@ def test_google_sign_in_refresh_and_expiry(make_website):
         state = s["oauth_state"]
     c.get(f"/auth/callback?code=abc&state={state}")
     assert c.get("/api/me").get_json()["email"] == "asha@gmail.com"
+    # Google bearer reaches the chat service for this merchant
+    H = {"X-IPE-Client": "web"}
+    created = c.post("/api/conversations", headers=H)
+    assert created.status_code == 201
+    assert created.get_json()["conversation"]["id"].startswith("c_")
     # the access token expires: the site refreshes it
     _expire_tokens(app)
     assert c.get("/api/me").status_code == 200 and g.calls[-1] == "refresh_token"
