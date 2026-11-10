@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ipe.example/contracts/chat_service.schema.json",
+  "title": "iPe chat service contracts (website <-> chat service), version 1",
+  "description": "Request and response bodies for the three contracts: send a chat message, load the past conversation, upload a file. Plus create/list conversations. See CONTRACTS.md.",
+  "$defs": {
+    "ConversationId": {"type": "string", "pattern": "^c_[a-z0-9]{12}$"},
+    "DocumentId": {"enum": ["business_registration", "owner_id", "bank_proof", "shopfront_photo", "dpa_addendum"]},
+    "Status": {"enum": ["DRAFT", "IN_REVIEW", "RECOMMEND_GO_LIVE", "REFUSED"]},
+    "StepState": {"enum": ["todo", "current", "done"]},
+
+    "Attachment": {
+      "type": "object", "additionalProperties": false, "required": ["document", "filename"],
+      "properties": {"document": {"$ref": "#/$defs/DocumentId"}, "filename": {"type": "string"}}
+    },
+    "SummaryCard": {
+      "type": "object", "required": ["type", "rows"],
+      "properties": {
+        "type": {"const": "summary"},
+        "rows": {"type": "array", "items": {"type": "object", "required": ["label", "value"],
+                 "properties": {"label": {"type": "string"}, "value": {"type": "string"}}}}
+      }
+    },
+    "Result": {
+      "type": "object",
+      "required": ["outcome", "missing_items", "assignee", "review_id", "citations", "volume_inr"],
+      "properties": {
+        "outcome": {"enum": ["IN_REVIEW", "RECOMMEND_GO_LIVE", "REFUSED"]},
+        "missing_items": {"type": "array", "items": {"$ref": "#/$defs/DocumentId"}},
+        "assignee": {"enum": ["MERCHANT_RISK_LEAD", "HEAD_OF_PAYMENTS", null]},
+        "review_id": {"type": ["string", "null"], "pattern": "^MR-\\d+$"},
+        "citations": {"type": "array", "items": {"type": "string"}},
+        "volume_inr": {"type": "integer"},
+        "business_type_allowed": {"type": ["boolean", "null"]},
+        "policy_conflict_noted": {"type": "boolean"}
+      }
+    },
+    "ResultCard": {"allOf": [{"$ref": "#/$defs/Result"}, {"type": "object", "required": ["type"], "properties": {"type": {"const": "result"}}}]},
+    "Message": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "role", "text", "attachments", "card", "created_at"],
+      "properties": {
+        "id": {"type": "integer"},
+        "role": {"enum": ["merchant", "assistant"]},
+        "text": {"type": "string"},
+        "attachments": {"type": "array", "items": {"$ref": "#/$defs/Attachment"}},
+        "card": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/SummaryCard"}, {"$ref": "#/$defs/ResultCard"}]},
+        "created_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "Pill": {
+      "type": "object", "required": ["label", "action"],
+      "properties": {
+        "label": {"type": "string"},
+        "action": {"enum": ["send", "upload", "submit"]},
+        "value": {"type": "string", "description": "text to send when action is send"},
+        "document": {"$ref": "#/$defs/DocumentId", "description": "which document, when action is upload"}
+      }
+    },
+    "Prompt": {
+      "type": "object", "required": ["field", "kind", "input", "pills", "accept"],
+      "properties": {
+        "field": {"type": ["string", "null"]},
+        "kind": {"enum": ["text", "choice", "upload", "summary", "closed"]},
+        "input": {"type": "boolean", "description": "show the text box"},
+        "pills": {"type": "array", "items": {"$ref": "#/$defs/Pill"}},
+        "accept": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "ConversationView": {
+      "type": "object",
+      "required": ["id", "shop_name", "status", "review_id", "steps", "messages", "prompt", "result", "created_at", "updated_at"],
+      "properties": {
+        "id": {"$ref": "#/$defs/ConversationId"},
+        "shop_name": {"type": ["string", "null"]},
+        "status": {"$ref": "#/$defs/Status"},
+        "review_id": {"type": ["string", "null"]},
+        "steps": {"type": "object", "required": ["shop_details", "documents", "submitted"],
+                  "properties": {"shop_details": {"$ref": "#/$defs/StepState"}, "documents": {"$ref": "#/$defs/StepState"},
+                                 "submitted": {"$ref": "#/$defs/StepState"}}},
+        "messages": {"type": "array", "items": {"$ref": "#/$defs/Message"}},
+        "prompt": {"$ref": "#/$defs/Prompt"},
+        "result": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/Result"}]},
+        "created_at": {"type": "string"},
+        "updated_at": {"type": "string"}
+      }
+    },
+    "ConversationListItem": {
+      "type": "object", "required": ["id", "shop_name", "status", "review_id", "updated_at"],
+      "properties": {"id": {"$ref": "#/$defs/ConversationId"}, "shop_name": {"type": ["string", "null"]},
+                     "status": {"$ref": "#/$defs/Status"}, "review_id": {"type": ["string", "null"]},
+                     "updated_at": {"type": "string"}}
+    },
+
+    "SendMessageRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "text": {"type": "string", "maxLength": 2000},
+        "action": {"enum": ["submit", null]},
+        "client_message_id": {"type": "string", "maxLength": 64, "description": "same id twice = same message (safe retry)"}
+      }
+    },
+    "SendMessageResponse": {
+      "type": "object", "required": ["conversation", "reply"],
+      "properties": {"conversation": {"$ref": "#/$defs/ConversationView"}, "reply": {"$ref": "#/$defs/Message"}}
+    },
+    "LoadConversationResponse": {
+      "type": "object", "required": ["conversation"],
+      "properties": {"conversation": {"$ref": "#/$defs/ConversationView"}}
+    },
+    "UploadFileResponse": {"$ref": "#/$defs/SendMessageResponse"},
+    "CreateConversationResponse": {"$ref": "#/$defs/LoadConversationResponse"},
+    "ListConversationsResponse": {
+      "type": "object", "required": ["conversations"],
+      "properties": {"conversations": {"type": "array", "items": {"$ref": "#/$defs/ConversationListItem"}}}
+    },
+    "Error": {
+      "type": "object", "required": ["error"],
+      "properties": {"error": {"type": "object", "required": ["code", "message"],
+                     "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}}
+    }
+  }
+}

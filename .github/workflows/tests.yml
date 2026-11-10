@@ -1,0 +1,18 @@
+# Runs the tests on GitHub every time someone pushes or opens a pull request.
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q tests
+      - name: Evaluation (dev split) with the app's agent
+        working-directory: evaluation
+        run: |
+          python harness/run.py --agent chat_service.agent.rules_agent:RulesAgent --split dev --out runs/ci_dev.json
+          python eval/evaluate.py --runs runs/ci_dev.json

@@ -1,0 +1,17 @@
+# secrets
+.env
+# local data: databases and uploaded files
+chat_service/data/
+website/data/
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+# evaluation runs you make yourself (the bundled examples are kept)
+evaluation/runs/mine_*

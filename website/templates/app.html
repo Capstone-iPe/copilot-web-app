@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iPe merchant onboarding</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<div class="layout">
+  <aside class="side" id="side" aria-label="Application details">
+    <p class="brand"><span class="logo">iPe</span> Merchant onboarding</p>
+
+    <section class="panel" aria-labelledby="this-shop">
+      <h2 id="this-shop" class="panel-title">This application</h2>
+      <p class="shop-name" id="shopName">New shop</p>
+      <dl class="facts">
+        <div><dt>Status</dt><dd><span class="badge" id="status">Draft</span></dd></div>
+        <div id="reviewRow" hidden><dt>Review number</dt><dd id="reviewId"></dd></div>
+      </dl>
+      <ol class="steps" id="steps">
+        <li data-step="shop_details">Shop details</li>
+        <li data-step="documents">Documents</li>
+        <li data-step="submitted">Submitted</li>
+      </ol>
+    </section>
+
+    <section class="panel" aria-labelledby="your-shops">
+      <h2 id="your-shops" class="panel-title">Your shops</h2>
+      <ul class="shops" id="shops"></ul>
+      <button class="btn btn-ghost" id="newShop" type="button">+ Apply for another shop</button>
+    </section>
+
+    <div class="who">
+      <span title="{{ user.email }}">{{ user.email }}{% if dev %} (test){% endif %}</span>
+      <form method="post" action="{{ url_for('logout') }}"><button class="link" type="submit">Sign out</button></form>
+    </div>
+  </aside>
+
+  <main class="chat" aria-label="Conversation">
+    <header class="chat-head">
+      <button class="link only-mobile" id="toggleSide" type="button" aria-controls="side" aria-expanded="false">Details</button>
+      <span id="headTitle">iPe onboarding</span>
+    </header>
+    <div class="thread" id="thread" aria-live="polite"></div>
+    <div class="typing" id="typing" hidden aria-label="iPe is replying"><span></span><span></span><span></span></div>
+    <p class="alert" id="error" role="alert" hidden></p>
+    <div class="pills" id="pills"></div>
+    <form class="composer" id="composer" hidden>
+      <input type="file" id="file" hidden>
+      <label class="sr-only" for="text">Your message</label>
+      <input type="text" id="text" autocomplete="off" maxlength="2000" placeholder="Type your answer">
+      <button class="btn send" type="submit" aria-label="Send">Send</button>
+    </form>
+  </main>
+</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

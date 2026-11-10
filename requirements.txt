@@ -1,0 +1,14 @@
+# Web servers
+flask>=3.0
+requests>=2.31
+python-dotenv>=1.0
+# Reading uploaded documents
+pypdf>=4.0
+pillow>=10.0
+# Building the evaluation dataset (generator only)
+reportlab>=4.0
+# Tests
+pytest>=8.0
+jsonschema>=4.20
+# Optional: only when you switch to the LLM agent
+# anthropic>=0.40
