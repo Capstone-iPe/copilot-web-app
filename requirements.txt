@@ -10,5 +10,6 @@ reportlab>=4.0
 # Tests
 pytest>=8.0
 jsonschema>=4.20
+matplotlib>=3.7
 # Optional: only when you switch to the LLM agent
 # anthropic>=0.40
