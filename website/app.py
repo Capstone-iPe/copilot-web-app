@@ -13,7 +13,7 @@ from datetime import timedelta
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
-from .auth import GoogleAuth, SignInRequired, Users
+from .auth import GoogleAuth, NotAllowed, SignInRequired, Users, allowed_emails
 from .chat_client import ChatClient, ChatServiceDown
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +29,7 @@ def create_app(config=None):
         "GOOGLE_CLIENT_SECRET": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
         "GOOGLE_REDIRECT_URI": os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/callback"),
         "DEV_LOGIN": os.environ.get("DEV_LOGIN", ""),
+        "GOOGLE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ALLOWED_EMAILS", ""),
         "CHAT_SERVICE_URL": os.environ.get("CHAT_SERVICE_URL", "http://127.0.0.1:5001"),
         "CHAT_SERVICE_TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", ""),
         "USERS_DB": os.environ.get("WEBSITE_DB", os.path.join(HERE, "data", "website.db")),
@@ -45,7 +46,8 @@ def create_app(config=None):
                       SESSION_COOKIE_SECURE=cfg["COOKIE_SECURE"], MAX_CONTENT_LENGTH=MAX_UPLOAD_MB * 1024 * 1024,
                       USERS_DB=cfg["USERS_DB"])
 
-    google = GoogleAuth(cfg["GOOGLE_CLIENT_ID"], cfg["GOOGLE_CLIENT_SECRET"], cfg["GOOGLE_REDIRECT_URI"], cfg["GOOGLE_HTTP"])
+    google = GoogleAuth(cfg["GOOGLE_CLIENT_ID"], cfg["GOOGLE_CLIENT_SECRET"], cfg["GOOGLE_REDIRECT_URI"],
+                         cfg["GOOGLE_HTTP"], allowed_emails(cfg["GOOGLE_ALLOWED_EMAILS"]))
     dev_login = cfg["DEV_LOGIN"] == "1" or (cfg["DEV_LOGIN"] == "" and not google.configured)
     users = Users(cfg["USERS_DB"])
     chat = ChatClient(cfg["CHAT_SERVICE_URL"], cfg["CHAT_SERVICE_TOKEN"], cfg["CHAT_HTTP"])
@@ -54,7 +56,9 @@ def create_app(config=None):
     def current_user():
         uid = session.get("uid")
         user = users.get(uid) if uid else None
-        if not user:
+        if not user or not google.email_allowed(user.get("email") or ""):
+            if user:
+                session.clear()
             return None
         try:
             return google.ensure_fresh(user, users)
@@ -107,6 +111,9 @@ def create_app(config=None):
     def callback():
         try:
             uid = google.finish(session, request.args, users)
+        except NotAllowed:
+            session.clear()
+            return "This Google account is not allowed.", 403
         except (SignInRequired, KeyError, ValueError) as e:
             session["signin_error"] = str(e) if isinstance(e, SignInRequired) else "Google sign-in failed."
             return redirect(url_for("home"))
@@ -120,6 +127,8 @@ def create_app(config=None):
         if not dev_login:
             return api_error("forbidden", "Development sign-in is turned off.", 403)
         email = (request.form.get("email") or "merchant@example.com").strip().lower()[:120]
+        if not google.email_allowed(email):
+            return api_error("forbidden", "This account is not allowed.", 403)
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
             session["signin_error"] = "Enter an email address."
             return redirect(url_for("home"))

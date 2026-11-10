@@ -33,6 +33,14 @@ class SignInRequired(Exception):
     pass
 
 
+class NotAllowed(Exception):
+    pass
+
+
+def allowed_emails(value: str) -> frozenset[str]:
+    return frozenset(part.strip().lower() for part in value.split(",") if part.strip())
+
+
 class Users:
     """Website's own small database: who has signed in, and their Google tokens."""
 
@@ -63,9 +71,15 @@ class Users:
 
 
 class GoogleAuth:
-    def __init__(self, client_id, client_secret, redirect_uri, http=None):
+    def __init__(self, client_id, client_secret, redirect_uri, http=None, allowed=frozenset()):
         self.client_id, self.client_secret, self.redirect_uri = client_id, client_secret, redirect_uri
         self.http = http or requests  # tests pass a fake here
+        self.allowed = allowed
+
+    def email_allowed(self, email: str) -> bool:
+        if not self.allowed:
+            return True
+        return email.strip().lower() in self.allowed
 
     @property
     def configured(self):
@@ -91,8 +105,11 @@ class GoogleAuth:
             raise SignInRequired("Google didn't accept the sign-in. Please try again.")
         t = tok.json()
         info = self.http.get(USERINFO_URL, headers={"Authorization": f"Bearer {t['access_token']}"}, timeout=10).json()
+        email = (info.get("email") or "").strip()
+        if not self.email_allowed(email):
+            raise NotAllowed()
         uid = "google:" + info["sub"]
-        users.save(uid, info.get("email"), info.get("name"), "google", t["access_token"], t.get("refresh_token"),
+        users.save(uid, email, info.get("name"), "google", t["access_token"], t.get("refresh_token"),
                    time.time() + int(t.get("expires_in", 3600)))
         return uid
 
