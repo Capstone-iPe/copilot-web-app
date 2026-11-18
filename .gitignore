@@ -1,6 +1,5 @@
 # secrets
 .env
-.fe-google.json
 # local data: databases and uploaded files
 chat_service/data/
 website/data/

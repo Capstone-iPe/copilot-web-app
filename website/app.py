@@ -6,6 +6,8 @@ It does three jobs and nothing more:
   1. Google sign-in (website/auth.py), remembered with a signed cookie and refreshed when it expires
   2. the pages (templates/ and static/)
   3. passing chat messages and files to the chat service through the contracts (website/chat_client.py)
+
+Point CHAT_SERVICE_URL at the in-repo mock (default) or at live copilot-svc.
 """
 import os
 import re
@@ -19,7 +21,8 @@ from .chat_client import ChatClient, ChatServiceDown
 HERE = os.path.dirname(os.path.abspath(__file__))
 ACCEPTED = (".pdf", ".jpg", ".jpeg", ".png")
 MAX_UPLOAD_MB = 10
-CID_RX = re.compile(r"^c_[a-z0-9]{12}$")
+# Mock chat_service uses c_…; live ONB / copilot-svc uses app_… + 12 hex.
+CID_RX = re.compile(r"^(c_[a-z0-9]{12}|app_[0-9a-f]{12})$")
 
 
 def create_app(config=None):
@@ -30,6 +33,8 @@ def create_app(config=None):
         "GOOGLE_REDIRECT_URI": os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/callback"),
         "DEV_LOGIN": os.environ.get("DEV_LOGIN", ""),
         "GOOGLE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ALLOWED_EMAILS", ""),
+        # mock chat_service: http://127.0.0.1:5001
+        # live copilot:     https://copilot-svc.onrender.com
         "CHAT_SERVICE_URL": os.environ.get("CHAT_SERVICE_URL", "http://127.0.0.1:5001"),
         "CHAT_SERVICE_TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", ""),
         "USERS_DB": os.environ.get("WEBSITE_DB", os.path.join(HERE, "data", "website.db")),

@@ -227,15 +227,17 @@ $("toggleSide").onclick = () => {
   const open = $("side").classList.toggle("open");
   $("toggleSide").setAttribute("aria-expanded", String(open));
 };
-window.onpopstate = () => { const m = location.pathname.match(/^\/c\/(c_[a-z0-9]{12})$/); if (m) openConversation(m[1], false); };
+const CID_PATH = /^\/c\/(c_[a-z0-9]{12}|app_[0-9a-f]{12})$/;
+window.onpopstate = () => { const m = location.pathname.match(CID_PATH); if (m) openConversation(m[1], false); };
 
 // ---------- start: a refresh shows the same conversation ----------
 (async function init() {
   try {
     shops = (await api("GET", "/api/conversations")).conversations;
     drawShops();
-    const m = location.pathname.match(/^\/c\/(c_[a-z0-9]{12})$/);
+    const m = location.pathname.match(CID_PATH);
     const id = m ? m[1] : shops.length ? shops[0].id : null;
     if (id) { await openConversation(id, !m); } else { await newShop(); }
   } catch (e) { showError(e.message); }
 })();
+

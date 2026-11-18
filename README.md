@@ -182,26 +182,26 @@ Ask **Rupesh Sasne** for the Google keys (a *client ID* and a *client secret*). 
 1. **APIs & Services → OAuth consent screen**: set it up (External, app name "iPe onboarding", your email). Add yourselves as test users.
 2. **Credentials → Create credentials → OAuth client ID**:
    - application type: **Web application**
-   - authorised redirect URIs: `http://localhost:5000/auth/callback` and `http://127.0.0.1:8765/callback` (CLI)
+   - authorised redirect URI: `http://localhost:5000/auth/callback`
 3. Copy the client ID and secret into `.env`:
 
    ```
    GOOGLE_CLIENT_ID=....apps.googleusercontent.com
    GOOGLE_CLIENT_SECRET=....
    GOOGLE_REDIRECT_URI=http://localhost:5000/auth/callback
-   GOOGLE_CLI_REDIRECT_URI=http://127.0.0.1:8765/callback
    ```
 
 4. Restart (`Ctrl+C`, then `python start.py`) and open **http://localhost:5000**. Use `localhost`, not `127.0.0.1`: Google only accepts the exact address you registered.
 
-Smoke the hosted copilot API as this FE (sign-in + refresh stay here):
+The **"Sign in with Google"** button now replaces the test sign-in.
 
-```bash
-./scripts/http-cli.sh
-# or: ./scripts/http-cli.sh http://127.0.0.1:8080
+To use live copilot-svc instead of the in-repo mock chat service:
+
+```
+CHAT_SERVICE_URL=https://copilot-svc.onrender.com
 ```
 
-The **"Sign in with Google"** button now replaces the test sign-in.
+(Google sign-in required — the site forwards the access token.)
 
 What happens behind the button is described step by step at the top of `website/auth.py`. In short:
 - The secret is used only by the server, so it never reaches the browser.
