@@ -19,7 +19,7 @@ chat = subprocess.Popen(
         sys.executable, "-m", "gunicorn",
         "--bind", "127.0.0.1:5001",
         "--workers", "1",
-        "--timeout", "120",
+        "--timeout", "180",
         "chat_service.app:create_app()",
     ]
 )
@@ -29,7 +29,7 @@ try:
             sys.executable, "-m", "gunicorn",
             "--bind", f"0.0.0.0:{port}",
             "--workers", "1",
-            "--timeout", "120",
+            "--timeout", "180",
             "website.app:create_app()",
         ]
     ))

@@ -3,8 +3,26 @@
 Each call sends the merchant's Google access token when they signed in with Google, or the
 shared development token for the development sign-in. The website never decides anything about
 the application; it only passes messages and files along and shows what comes back.
+
+A free Render service sleeps on its own. The first call often gets an HTML start-up page, or
+the connection drops, while copilot and ONB are still booting. Retry those. A JSON error is
+returned as itself.
 """
+import time
+
 import requests
+
+# Three attempts stay inside the website process timeout (serve.py uses 180s).
+# 50s covers the copilot's own retries while ONB or the corpus is still booting.
+_TIMEOUT = 50
+_DELAYS = (0, 8, 15)
+_RETRY_STATUSES = {502, 503, 504}
+_WAKING = {
+    "error": {
+        "code": "chat_unavailable",
+        "message": "The chat service is waking up. Try again in a moment.",
+    }
+}
 
 
 class ChatServiceDown(Exception):
@@ -22,15 +40,29 @@ class ChatClient:
             "Authorization": f"Bearer {bearer or self.token}",
             "X-Merchant-Id": merchant_id,
         }
-        try:
-            r = self.http.request(method, self.base + path, headers=headers, timeout=60, **kw)
-        except requests.RequestException as e:
-            raise ChatServiceDown(str(e)) from e
-        try:
-            body = r.json()
-        except ValueError:
-            body = {"error": {"code": "bad_reply", "message": "The chat service sent an unreadable reply."}}
-        return r.status_code, body
+        last_error = None
+        saw_response = False
+        for delay in _DELAYS:
+            if delay:
+                time.sleep(delay)
+            _rewind(kw.get("files"))
+            try:
+                response = self.http.request(
+                    method, self.base + path, headers=headers, timeout=_TIMEOUT, **kw
+                )
+            except requests.RequestException as exc:
+                last_error = exc
+                continue
+            saw_response = True
+            if response.status_code in _RETRY_STATUSES:
+                continue
+            body = _json(response)
+            if body is None:
+                continue
+            return response.status_code, body
+        if last_error is not None and not saw_response:
+            raise ChatServiceDown(str(last_error)) from last_error
+        return 503, _WAKING
 
     def create_conversation(self, merchant_id, bearer=None, application_id=None):
         extra = {"json": {"application_id": application_id}} if application_id else {}
@@ -57,3 +89,19 @@ class ChatClient:
             data={"document": document},
             files={"file": (filename, stream, mimetype)},
         )
+
+
+def _json(response):
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+def _rewind(files) -> None:
+    if not files:
+        return
+    for value in files.values():
+        stream = value[1] if isinstance(value, tuple) and len(value) > 1 else None
+        if hasattr(stream, "seek"):
+            stream.seek(0)
