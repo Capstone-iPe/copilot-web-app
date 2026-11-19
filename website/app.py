@@ -169,7 +169,9 @@ def create_app(config=None):
     @app.post("/api/conversations")
     @api
     def create_conversation(user):
-        return relay(chat.create_conversation(user["id"], bearer_for(user)))
+        body = request.get_json(silent=True) or {}
+        application_id = str(body.get("application_id") or "").strip() or None
+        return relay(chat.create_conversation(user["id"], bearer_for(user), application_id))
 
     @app.get("/api/conversations/<cid>")
     @api

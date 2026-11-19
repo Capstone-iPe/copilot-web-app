@@ -208,7 +208,16 @@ async function openConversation(id, push) {
     if (push) history.pushState({}, "", "/c/" + id);
     render(d.conversation);
     $("side").classList.remove("open");
-  } catch (e) { showError(e.message); }
+  } catch (e) {
+    if (!String(id).startsWith("app_")) { showError(e.message); return; }
+    try {
+      const d = await api("POST", "/api/conversations", { application_id: id });
+      if (push) history.pushState({}, "", "/c/" + d.conversation.id);
+      render(d.conversation);
+      $("side").classList.remove("open");
+      refreshShops();
+    } catch (resumeError) { showError(resumeError.message); }
+  }
 }
 
 async function newShop() {

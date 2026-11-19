@@ -32,8 +32,9 @@ class ChatClient:
             body = {"error": {"code": "bad_reply", "message": "The chat service sent an unreadable reply."}}
         return r.status_code, body
 
-    def create_conversation(self, merchant_id, bearer=None):
-        return self._call("POST", "/v1/conversations", merchant_id, bearer)
+    def create_conversation(self, merchant_id, bearer=None, application_id=None):
+        extra = {"json": {"application_id": application_id}} if application_id else {}
+        return self._call("POST", "/v1/conversations", merchant_id, bearer, **extra)
 
     def list_conversations(self, merchant_id, bearer=None):
         return self._call("GET", "/v1/conversations", merchant_id, bearer)
