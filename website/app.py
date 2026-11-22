@@ -61,9 +61,10 @@ def create_app(config=None):
     def current_user():
         uid = session.get("uid")
         user = users.get(uid) if uid else None
-        if not user or not google.email_allowed(user.get("email") or ""):
-            if user:
-                session.clear()
+        if not user:
+            return None
+        if user.get("provider") != "dev" and not google.email_allowed(user.get("email") or ""):
+            session.clear()
             return None
         try:
             return google.ensure_fresh(user, users)
@@ -138,7 +139,8 @@ def create_app(config=None):
         if not dev_login:
             return api_error("forbidden", "Development sign-in is turned off.", 403)
         email = (request.form.get("email") or "merchant@example.com").strip().lower()[:120]
-        if not google.email_allowed(email):
+        # In development mode, allow test accounts without Google allowlist restrictions
+        if not dev_login and not google.email_allowed(email):
             return api_error("forbidden", "This account is not allowed.", 403)
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
             session["signin_error"] = "Enter an email address."

@@ -29,7 +29,14 @@ async function api(method, path, body, isForm) {
   if (body && !isForm) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   if (body && isForm) opts.body = body;
   const res = await fetch(path, opts);
-  if (res.status === 401) { location.href = "/"; throw new Error("Please sign in again."); }
+  if (res.status === 401) {
+    if (location.pathname !== "/" && location.pathname !== "") {
+      location.href = "/";
+    } else {
+      showError("Please sign in again.");
+    }
+    throw new Error("Please sign in again.");
+  }
   const data = await res.json().catch(() => ({ error: { message: "The server sent an unreadable reply." } }));
   if (!res.ok) throw new Error((data.error && data.error.message) || res.statusText);
   return data;
