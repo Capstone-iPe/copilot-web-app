@@ -82,8 +82,35 @@ class FakeGoogle:
             return self.R(400, {"error": "invalid_grant"})
         return self.R(200, {"access_token": "at2", "expires_in": 3600})
 
+    email = "asha@gmail.com"
+
     def get(self, url, headers=None, timeout=None):
-        return self.R(200, {"sub": "123", "email": "asha@gmail.com", "name": "Asha"})
+        return self.R(200, {"sub": "123", "email": self.email, "name": "Asha"})
+
+
+def test_only_a_listed_google_account_can_sign_in(make_website):
+    allowed = "rupeshsasne@gmail.com,basiddgp@gmail.com"
+    listed = FakeGoogle()
+    listed.email = "BasidDGP@gmail.com"
+    app = make_website(GOOGLE_CLIENT_ID="CID", GOOGLE_CLIENT_SECRET="SECRET", GOOGLE_HTTP=listed,
+                       GOOGLE_ALLOWED_EMAILS=allowed)
+    c = app.test_client()
+    c.get("/login")
+    with c.session_transaction() as s:
+        state = s["oauth_state"]
+    assert c.get(f"/auth/callback?code=abc&state={state}").status_code == 302
+    assert c.get("/api/me").get_json()["email"] == "BasidDGP@gmail.com"
+
+    other = FakeGoogle()
+    other.email = "other@gmail.com"
+    blocked = make_website(GOOGLE_CLIENT_ID="CID", GOOGLE_CLIENT_SECRET="SECRET", GOOGLE_HTTP=other,
+                           GOOGLE_ALLOWED_EMAILS=allowed).test_client()
+    blocked.get("/login")
+    with blocked.session_transaction() as s:
+        state = s["oauth_state"]
+    refused = blocked.get(f"/auth/callback?code=abc&state={state}")
+    assert refused.status_code == 403
+    assert blocked.get("/api/me").status_code == 401
 
 
 def test_google_sign_in_refresh_and_expiry(make_website):
@@ -103,6 +130,11 @@ def test_google_sign_in_refresh_and_expiry(make_website):
         state = s["oauth_state"]
     c.get(f"/auth/callback?code=abc&state={state}")
     assert c.get("/api/me").get_json()["email"] == "asha@gmail.com"
+    # Google bearer reaches the chat service for this merchant
+    H = {"X-IPE-Client": "web"}
+    created = c.post("/api/conversations", headers=H)
+    assert created.status_code == 201
+    assert created.get_json()["conversation"]["id"].startswith("c_")
     # the access token expires: the site refreshes it
     _expire_tokens(app)
     assert c.get("/api/me").status_code == 200 and g.calls[-1] == "refresh_token"

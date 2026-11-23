@@ -1,7 +1,8 @@
 """The chat service: holds every conversation and runs the agent.
 
-It implements the contracts in contracts/CONTRACTS.md. Only the website calls it, with a shared
-secret (CHAT_SERVICE_TOKEN) and the signed-in merchant's id in the X-Merchant-Id header.
+It implements the contracts in contracts/CONTRACTS.md. The website calls it with the merchant's
+Google access token when Google sign-in is on, or with CHAT_SERVICE_TOKEN for development
+sign-in. Every Google bearer is checked with Google before the request is handled.
 
     python -m chat_service.app        # listens on http://127.0.0.1:5001
 
@@ -18,6 +19,8 @@ import uuid
 from flask import Flask, jsonify, request
 from werkzeug.utils import secure_filename
 
+from .google_auth import GoogleTokenChecker, allowed_emails, audiences
+from .contract import message_id, public_result
 from .onboarding_client import OnboardingClient
 from .store import Store
 
@@ -34,7 +37,12 @@ def error(code, message, status):
 
 def create_app(config=None):
     cfg = {
-        "TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", "dev-chat-token"),
+        "TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", ""),
+        "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID", ""),
+        "GOOGLE_ALLOWED_AUDIENCES": os.environ.get("GOOGLE_ALLOWED_AUDIENCES", ""),
+        "GOOGLE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ALLOWED_EMAILS", ""),
+        "GOOGLE_HTTP": None,
+        "GOOGLE_CHECKER": None,
         "DB": os.environ.get("CHAT_DB", os.path.join(HERE, "data", "chat.db")),
         "UPLOADS": os.environ.get("CHAT_UPLOADS", os.path.join(HERE, "data", "uploads")),
         "AGENT": os.environ.get("CHAT_AGENT", "chat_service.agent.rules_agent:RulesAgent"),
@@ -47,6 +55,13 @@ def create_app(config=None):
     store = Store(cfg["DB"])
     onboarding = OnboardingClient(store)
     locks = {}
+    google_checker = cfg["GOOGLE_CHECKER"]
+    if google_checker is None and cfg["GOOGLE_CLIENT_ID"].strip():
+        google_checker = GoogleTokenChecker(
+            audiences(cfg["GOOGLE_CLIENT_ID"], cfg["GOOGLE_ALLOWED_AUDIENCES"]),
+            allowed_emails(cfg["GOOGLE_ALLOWED_EMAILS"]),
+            cfg["GOOGLE_HTTP"],
+        )
 
     def make_agent():
         mod, cls = cfg["AGENT"].split(":")
@@ -61,8 +76,13 @@ def create_app(config=None):
         agent = agent or load_agent(row)
         v = agent.view()
         return {"id": row["id"], "shop_name": v["shop_name"], "status": v["status"], "review_id": v["review_id"],
-                "steps": v["steps"], "messages": store.messages(row["id"]), "prompt": v["prompt"], "result": v["result"],
+                "steps": v["steps"], "messages": store.messages(row["id"]), "prompt": v["prompt"], "result": public_result(v["result"]),
                 "created_at": row["created_at"], "updated_at": store.get_conversation(row["id"])["updated_at"]}
+
+    def bearer_value(header: str) -> str:
+        if header.lower().startswith("bearer "):
+            return header[7:].strip()
+        return ""
 
     # ------------------------------------------------------------ guards
     @app.before_request
@@ -70,11 +90,21 @@ def create_app(config=None):
         if request.path == "/v1/health":
             return None
         auth = request.headers.get("Authorization", "")
-        if not hmac.compare_digest(auth, f"Bearer {cfg['TOKEN']}"):
-            return error("unauthorized", "Missing or wrong service token.", 401)
-        if not request.headers.get("X-Merchant-Id"):
+        token = bearer_value(auth)
+        merchant = request.headers.get("X-Merchant-Id", "").strip()
+        if not merchant:
             return error("no_merchant", "X-Merchant-Id header is required.", 400)
-        return None
+        if google_checker is not None:
+            identity = google_checker.inspect(token)
+            if identity is not None:
+                expected = "google:" + identity.subject
+                if merchant != expected:
+                    return error("unauthorized", "Merchant id does not match the Google sign-in.", 401)
+                return None
+        service = cfg["TOKEN"]
+        if service and hmac.compare_digest(auth, f"Bearer {service}"):
+            return None
+        return error("unauthorized", "Missing or wrong bearer token.", 401)
 
     def own(cid):
         row = store.get_conversation(cid)
@@ -93,6 +123,12 @@ def create_app(config=None):
 
     @app.post("/v1/conversations")
     def create_conversation():
+        body = request.get_json(silent=True) or {}
+        if body.get("application_id"):                  # reopen one of this merchant's conversations
+            row = own(str(body["application_id"]))
+            if not row:
+                return error("not_found", "No such conversation.", 404)
+            return jsonify({"conversation": view(row)}), 200
         cid = "c_" + uuid.uuid4().hex[:12]
         agent = make_agent()
         agent.start({"conversation_id": cid, "policy_dir": cfg["POLICY_DIR"], "today": cfg["TODAY"] or dt.date.today().isoformat()})
@@ -129,7 +165,7 @@ def create_app(config=None):
             mid = store.add_message(cid, "assistant", reply.get("text", ""), card=reply.get("card"))
         row = store.get_conversation(cid)
         conv = view(row, agent)
-        return jsonify({"conversation": conv, "reply": next(m for m in conv["messages"] if m["id"] == mid)})
+        return jsonify({"conversation": conv, "reply": next(m for m in conv["messages"] if m["id"] == message_id(mid))})
 
     @app.post("/v1/conversations/<cid>/messages")
     def send_message(cid):
@@ -150,7 +186,7 @@ def create_app(config=None):
             prev = store.reply_after(cid, cmid)
             if prev:                                    # a retry of a message we already answered
                 conv = view(row)
-                return jsonify({"conversation": conv, "reply": next(m for m in conv["messages"] if m["id"] == prev)})
+                return jsonify({"conversation": conv, "reply": next(m for m in conv["messages"] if m["id"] == message_id(prev))})
         msg = {"text": text, "attachments": [], "action": action}
         return run_turn(row, msg, text or "Submit application", [], cmid)
 
@@ -169,13 +205,19 @@ def create_app(config=None):
         ext = os.path.splitext(name)[1].lower()
         if ext not in ACCEPTED:
             return error("unsupported_type", "Only PDF, JPG and PNG files are accepted.", 415)
+        cmid = (request.form.get("client_message_id") or "").strip()[:128] or None
+        if cmid:
+            prev = store.reply_after(cid, cmid)
+            if prev:                                    # a retried upload we already answered
+                conv = view(row)
+                return jsonify({"conversation": conv, "reply": next(m for m in conv["messages"] if m["id"] == message_id(prev))})
         folder = os.path.join(cfg["UPLOADS"], cid)
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, f"{uuid.uuid4().hex[:8]}_{name}")
         f.save(path)
         att = {"document": document, "filename": name, "path": path, "mime": f.mimetype or "application/octet-stream"}
         msg = {"text": "", "attachments": [att], "action": None}
-        return run_turn(row, msg, "", [{"document": document, "filename": name}])
+        return run_turn(row, msg, "", [{"document": document, "filename": name}], cmid)
 
     app.store = store  # handy in tests
     return app

@@ -10,17 +10,19 @@ python -m pytest -q tests
 
 **What it is.** pytest is a Python tool that finds every function whose name starts with `test_` and runs it. Each test sets up a situation, does something, and *asserts* (checks) that the result is what the requirements say. If any check is false, that test fails.
 
-**What we check** (19 tests, about 4 seconds):
+**What we check** (41 tests, about 30 seconds):
 
 | File | What it proves |
 |---|---|
 | `test_chat_service.py` | The conversation rules: one question at a time; "why" explains then asks again; suggestion pills; real uploads only (PDF/JPG/PNG); addendum only when phones are stored; summary before submit; editing answers; result; uploads after the result keep the review number; refresh shows the same chat; one shop per conversation; refused has no review number; callers are checked |
 | `test_website.py` | Sign-in (test sign-in and Google, using a fake Google), token refresh and expiry, uploads checked, other merchants blocked |
 | `test_agent.py` | The agent scores 100% on all 102 evaluation conversations; its memory survives a save and load; the LLM template turns free text into answers (with a fake model) |
+| `test_errors_and_contract.py` | `corpus_unavailable` and other copilot errors reach the page with their own code; the website retries only what is safe to repeat; a rejected Google token is refreshed once, then the merchant is signed out with a plain message; list and reload survive a restart; no exam-harness field ever reaches the browser; a retried upload is not processed twice |
+| `test_cold_start.py` | A sleeping Render service (HTML start-up page, dropped connection) is retried |
 | `conftest.py` | Not tests: the shared setup. It wires the website to the chat service in memory, and checks every response against the contracts in `contracts/chat_service.schema.json` |
 
 **How to read the result.**
-- `19 passed`: everything works.
+- `41 passed`: everything works.
 - `1 failed`: scroll up to the `FAILURES` section. It shows:
   - the test's name (which requirement broke)
   - the line marked `>` (the check that was false)

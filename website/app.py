@@ -6,6 +6,8 @@ It does three jobs and nothing more:
   1. Google sign-in (website/auth.py), remembered with a signed cookie and refreshed when it expires
   2. the pages (templates/ and static/)
   3. passing chat messages and files to the chat service through the contracts (website/chat_client.py)
+
+Point CHAT_SERVICE_URL at the in-repo mock (default) or at live copilot-svc.
 """
 import os
 import re
@@ -13,13 +15,28 @@ from datetime import timedelta
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
-from .auth import GoogleAuth, SignInRequired, Users
+from .auth import GoogleAuth, NotAllowed, SignInRequired, Users, allowed_emails
 from .chat_client import ChatClient, ChatServiceDown
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ACCEPTED = (".pdf", ".jpg", ".jpeg", ".png")
 MAX_UPLOAD_MB = 10
-CID_RX = re.compile(r"^c_[a-z0-9]{12}$")
+# Mock chat_service uses c_…; live ONB / copilot-svc uses app_… + 12 hex.
+CHAT_SIGNIN = {
+    "expired": "Your sign-in expired. Please sign in again.",
+    "rejected": "The onboarding service could not confirm your Google sign-in. Please sign in again. "
+                "If this keeps happening, ask the iPe team to check that your account is allowed.",
+    "not_allowed": "This Google account is not allowed to use iPe onboarding. Sign in with another account.",
+    "dev": "The chat service does not accept the test sign-in. Use Sign in with Google.",
+}
+
+
+def _code(body):
+    error = body.get("error") if isinstance(body, dict) else None
+    return error.get("code") if isinstance(error, dict) else None
+
+
+CID_RX = re.compile(r"^(c_[a-z0-9]{12}|app_[0-9a-f]{12})$")
 
 
 def create_app(config=None):
@@ -29,8 +46,11 @@ def create_app(config=None):
         "GOOGLE_CLIENT_SECRET": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
         "GOOGLE_REDIRECT_URI": os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/callback"),
         "DEV_LOGIN": os.environ.get("DEV_LOGIN", ""),
+        "GOOGLE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ALLOWED_EMAILS", ""),
+        # mock chat_service: http://127.0.0.1:5001
+        # live copilot:     https://copilot-svc.onrender.com
         "CHAT_SERVICE_URL": os.environ.get("CHAT_SERVICE_URL", "http://127.0.0.1:5001"),
-        "CHAT_SERVICE_TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", "dev-chat-token"),
+        "CHAT_SERVICE_TOKEN": os.environ.get("CHAT_SERVICE_TOKEN", ""),
         "USERS_DB": os.environ.get("WEBSITE_DB", os.path.join(HERE, "data", "website.db")),
         "COOKIE_SECURE": os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
         "CHAT_HTTP": None, "GOOGLE_HTTP": None,
@@ -45,7 +65,8 @@ def create_app(config=None):
                       SESSION_COOKIE_SECURE=cfg["COOKIE_SECURE"], MAX_CONTENT_LENGTH=MAX_UPLOAD_MB * 1024 * 1024,
                       USERS_DB=cfg["USERS_DB"])
 
-    google = GoogleAuth(cfg["GOOGLE_CLIENT_ID"], cfg["GOOGLE_CLIENT_SECRET"], cfg["GOOGLE_REDIRECT_URI"], cfg["GOOGLE_HTTP"])
+    google = GoogleAuth(cfg["GOOGLE_CLIENT_ID"], cfg["GOOGLE_CLIENT_SECRET"], cfg["GOOGLE_REDIRECT_URI"],
+                         cfg["GOOGLE_HTTP"], allowed_emails(cfg["GOOGLE_ALLOWED_EMAILS"]))
     dev_login = cfg["DEV_LOGIN"] == "1" or (cfg["DEV_LOGIN"] == "" and not google.configured)
     users = Users(cfg["USERS_DB"])
     chat = ChatClient(cfg["CHAT_SERVICE_URL"], cfg["CHAT_SERVICE_TOKEN"], cfg["CHAT_HTTP"])
@@ -56,6 +77,9 @@ def create_app(config=None):
         user = users.get(uid) if uid else None
         if not user:
             return None
+        if user.get("provider") != "dev" and not google.email_allowed(user.get("email") or ""):
+            session.clear()
+            return None
         try:
             return google.ensure_fresh(user, users)
         except SignInRequired:
@@ -65,9 +89,37 @@ def create_app(config=None):
     def api_error(code, message, status):
         return jsonify({"error": {"code": code, "message": message}}), status
 
-    def relay(status_body):
-        status, body = status_body
+    def call_chat(user, send):
+        """Call the chat service as this merchant and pass its answer on.
+
+        `send(bearer)` makes the call. If the chat service rejects a Google token (401), the token
+        is refreshed once and the call repeated. If it is still rejected, or the account is not
+        allowed (403), the merchant is signed out here and the page is told to show the sign-in
+        page with a plain message, instead of looping on an error.
+        """
+        status, body = send(bearer_for(user))
+        if status == 401 and user.get("provider") == "google":
+            try:
+                user = google.ensure_fresh(user, users, force=True)
+            except SignInRequired:
+                return signed_out(CHAT_SIGNIN["expired"])
+            status, body = send(bearer_for(user))
+        if status in (401, 403) and _code(body) in ("unauthorized", "forbidden"):
+            if status == 403:
+                return signed_out(CHAT_SIGNIN["not_allowed"])
+            return signed_out(CHAT_SIGNIN["rejected" if user.get("provider") == "google" else "dev"])
         return jsonify(body), status
+
+    def signed_out(message):
+        session.clear()
+        session["signin_error"] = message
+        return api_error("sign_in_required", message, 401)
+
+    def bearer_for(user):
+        """Google users send Google's access token. Development sign-in uses the shared token."""
+        if user.get("provider") == "google" and user.get("access_token"):
+            return user["access_token"]
+        return cfg["CHAT_SERVICE_TOKEN"]
 
     def api(fn):
         """Wrap a /api route: require sign-in, block cross-site posts, map chat-service outages."""
@@ -107,6 +159,9 @@ def create_app(config=None):
     def callback():
         try:
             uid = google.finish(session, request.args, users)
+        except NotAllowed:
+            session.clear()
+            return "This Google account is not allowed.", 403
         except (SignInRequired, KeyError, ValueError) as e:
             session["signin_error"] = str(e) if isinstance(e, SignInRequired) else "Google sign-in failed."
             return redirect(url_for("home"))
@@ -120,6 +175,9 @@ def create_app(config=None):
         if not dev_login:
             return api_error("forbidden", "Development sign-in is turned off.", 403)
         email = (request.form.get("email") or "merchant@example.com").strip().lower()[:120]
+        # In development mode, allow test accounts without Google allowlist restrictions
+        if not dev_login and not google.email_allowed(email):
+            return api_error("forbidden", "This account is not allowed.", 403)
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
             session["signin_error"] = "Enter an email address."
             return redirect(url_for("home"))
@@ -144,23 +202,32 @@ def create_app(config=None):
     @app.get("/api/conversations")
     @api
     def list_conversations(user):
-        return relay(chat.list_conversations(user["id"]))
+        return call_chat(user, lambda bearer: chat.list_conversations(user["id"], bearer))
 
     @app.post("/api/conversations")
     @api
     def create_conversation(user):
-        return relay(chat.create_conversation(user["id"]))
+        body = request.get_json(silent=True) or {}
+        application_id = str(body.get("application_id") or "").strip() or None
+        return call_chat(user, lambda bearer: chat.create_conversation(user["id"], bearer, application_id))
 
     @app.get("/api/conversations/<cid>")
     @api
     def load_conversation(user, cid):
-        return relay(chat.load_conversation(user["id"], cid))
+        return call_chat(user, lambda bearer: chat.load_conversation(user["id"], cid, bearer))
 
     @app.post("/api/conversations/<cid>/messages")
     @api
     def send_message(user, cid):
         body = request.get_json(silent=True) or {}
-        return relay(chat.send_message(user["id"], cid, body.get("text", ""), body.get("action"), body.get("client_message_id")))
+        return call_chat(user, lambda bearer: chat.send_message(
+            user["id"],
+            cid,
+            body.get("text", ""),
+            body.get("action"),
+            body.get("client_message_id"),
+            bearer,
+        ))
 
     @app.post("/api/conversations/<cid>/files")
     @api
@@ -170,8 +237,17 @@ def create_app(config=None):
             return api_error("no_file", "Choose a file.", 400)
         if not f.filename.lower().endswith(ACCEPTED):
             return api_error("unsupported_type", "Only PDF, JPG and PNG files are accepted.", 415)
-        return relay(chat.upload_file(user["id"], cid, request.form.get("document", ""), f.filename, f.stream,
-                                      f.mimetype or "application/octet-stream"))
+        cmid = (request.form.get("client_message_id") or "").strip()[:128] or None
+        return call_chat(user, lambda bearer: chat.upload_file(
+            user["id"],
+            cid,
+            request.form.get("document", ""),
+            f.filename,
+            f.stream,
+            f.mimetype or "application/octet-stream",
+            bearer,
+            cmid,
+        ))
 
     @app.errorhandler(413)
     def too_big(_e):

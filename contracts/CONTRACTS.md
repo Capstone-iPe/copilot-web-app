@@ -1,102 +1,62 @@
-# Contracts: website ↔ chat service (version 1)
+# Contract: web chat ↔ copilot (version 1.0, frozen)
 
-A **contract** is a written agreement about the exact messages two programs send each other. The website team and the chat-service team can work separately as long as both keep to it. The machine-checkable version is [`chat_service.schema.json`](chat_service.schema.json) (JSON Schema). The tests in `tests/` fail if either side breaks it.
+The full decision record is **[LLD-0002](https://github.com/Capstone-iPe/analysis/blob/main/docs/LLD-0002-web-chat-contract.md)** in `Capstone-iPe/analysis`. This page is the quick reference for people working in this repository. The machine-checkable form is [`chat_service.schema.json`](chat_service.schema.json): if this page and the schema ever disagree, the schema wins, and both must be fixed together.
 
-The requirements name three contracts: **send a chat message**, **load the past conversation** and **upload a file**. Two small helpers (create and list conversations) are added because "one shop, one conversation" needs them.
+The same contract is spoken by the live `copilot-svc` and by the in-repo mock chat service (`chat_service/`).
 
-## Every request
+## Calls
 
-| Header | Value |
-|---|---|
-| `Authorization` | `Bearer <CHAT_SERVICE_TOKEN>`: the secret shared by the website and the chat service |
-| `X-Merchant-Id` | The signed-in merchant's id, set by the website after checking the sign-in (e.g. `google:1234567890`) |
-
-A merchant only ever sees their own conversations. Someone else's conversation id returns `404`.
-
-Base URL: `CHAT_SERVICE_URL` (default `http://127.0.0.1:5001`). All bodies are JSON, except file uploads.
-
-## 1. Send a chat message
-
-`POST /v1/conversations/{conversation_id}/messages`
-
-```json
-{ "text": "Lotus Tea House", "action": null, "client_message_id": "7f1c…" }
-```
-
-- `text`: what the merchant typed or the pill they tapped (up to 2000 characters).
-- `action`: `"submit"` when the merchant presses Submit, otherwise `null`.
-- `client_message_id` (optional): a random id made by the page. If the same id arrives twice (for example after a network retry), the message is not processed again.
-
-Response `200`:
-
-```json
-{ "conversation": { …ConversationView… }, "reply": { …Message… } }
-```
-
-## 2. Load the past conversation
-
-`GET /v1/conversations/{conversation_id}`
-
-Response `200`: `{ "conversation": { …ConversationView… } }`. The page calls this on every load, which is why a refresh shows the same conversation.
-
-## 3. Upload a file
-
-`POST /v1/conversations/{conversation_id}/files` as `multipart/form-data`:
-
-| Field | Value |
-|---|---|
-| `document` | `business_registration`, `owner_id`, `bank_proof`, `shopfront_photo` or `dpa_addendum` |
-| `file` | The file: PDF, JPG or PNG, up to 10 MB |
-
-Response `200`: same shape as sending a message. Before submit, only the document currently being asked for is accepted. After the result, any missing document can be uploaded and the result updates; the review number stays the same.
-
-## Helpers
-
-| Call | Purpose | Response |
+| Call | Request | Success |
 |---|---|---|
-| `POST /v1/conversations` | Start a new shop application | `201 { "conversation": … }` |
-| `GET /v1/conversations` | This merchant's applications, newest first | `{ "conversations": [ {id, shop_name, status, review_id, updated_at} ] }` |
-| `GET /v1/health` | Is the service up? (no headers needed) | `{ "ok": true, "agent": "…" }` |
+| Create | `POST /v1/conversations` (body empty, or `{"application_id"}` to reopen your own) | `201 {conversation}`; `200` when reopening |
+| List | `GET /v1/conversations` | `200 {conversations: [{id, shop_name, status, review_id, updated_at}]}`, newest first |
+| Load | `GET /v1/conversations/{id}` | `200 {conversation}` |
+| Send a message | `POST /v1/conversations/{id}/messages` `{"text", "action": "submit"\|null, "client_message_id"}` | `200 {conversation, reply}` |
+| Upload a file | `POST /v1/conversations/{id}/files` multipart `document`, `file`, `client_message_id` | `200 {conversation, reply}` |
 
-## The objects
+Every call (except `GET /v1/health`) sends two headers:
+- `Authorization: Bearer <Google access token>`. With the development sign-in against the mock, it's `Bearer <CHAT_SERVICE_TOKEN>` instead.
+- `X-Merchant-Id: google:<sub>`, or `dev:<email>` for the development sign-in.
 
-**ConversationView**: everything the page needs to draw the screen.
+`client_message_id` makes a retry safe: the same id returns the stored reply instead of running the turn twice. The page sends one with every message and upload.
 
-| Field | Meaning |
+## What the browser receives
+
+| Object | Fields (exactly these) |
 |---|---|
-| `id` | `c_` + 12 characters |
-| `shop_name` | Once given, else `null` |
-| `status` | `DRAFT` before submit; then `IN_REVIEW`, `RECOMMEND_GO_LIVE` or `REFUSED` |
-| `review_id` | `MR-…` once the result opens a review; `null` before that and for refused applications |
-| `steps` | `shop_details`, `documents`, `submitted`: each `todo`, `current` or `done` |
-| `messages` | Every message so far, oldest first |
-| `prompt` | What to offer under the last message (below) |
-| `result` | After submit: `outcome`, `missing_items`, `assignee`, `review_id`, `citations`, `volume_inr` |
+| ConversationView | `id`, `shop_name`, `status`, `review_id`, `steps`, `messages`, `prompt`, `result`, `created_at`, `updated_at` |
+| Message | `id` (string), `role`, `text`, `attachments` (`[{document, filename}]`), `card`, `created_at` |
+| Result / result card | `outcome`, `missing_items`, `assignee`, `review_id`, `citations`, `volume_inr` (+ `type: "result"` on the card) |
+| Prompt | `field`, `kind`, `input`, `pills`, `accept` |
+| Pill | `label`, `action` (`send`/`upload`/`submit`), `value` for send, `document` for upload |
 
-**Message**: `id`, `role` (`merchant` or `assistant`), `text`, `attachments` (`[{document, filename}]`), `card` (`null`, a summary card or a result card), `created_at`.
+**Not in the contract**, and never sent to the browser:
+- **Exam-harness scoring fields:** `injection_flagged`, `policy_conflict_noted`, `business_type_allowed`, `addendum_required`, `invalid_items`.
+- **ONB file states and verifier `evidence`.**
 
-**Prompt**: tells the page which pills and inputs to show.
-
-| Field | Meaning |
-|---|---|
-| `field` | The question being asked (e.g. `city`, `bank_proof`, `summary`), or `null` after the result |
-| `kind` | `text`, `choice`, `upload`, `summary` or `closed` (after the result) |
-| `input` | Show the text box? |
-| `pills` | Buttons: `{label, action}` where `action` is `send` (send `value` as text), `upload` (open a file picker for `document`) or `submit` |
-| `accept` | File types allowed when uploading |
+The rule agent still computes the exam fields for `evaluation/`. `chat_service/contract.py` strips them before anything goes over HTTP.
 
 ## Errors
 
-Every error looks like `{"error": {"code": "…", "message": "…"}}`. The message is safe to show the merchant.
+`{"error": {"code", "message"}}`. The page picks its own wording **by code**: `message` may hold developer detail. The full table, with what the page does for each code, is LLD-0002 §6. The codes the page handles specially:
 
-| Status | `code` | When |
-|---|---|---|
-| 400 | `bad_request`, `empty_message`, `bad_document`, `no_file`, `no_merchant` | The request is malformed |
-| 401 | `unauthorized` | Wrong or missing service token |
-| 404 | `not_found` | No such conversation for this merchant |
-| 413 | `file_too_large` | Over 10 MB |
-| 415 | `unsupported_type` | Not PDF, JPG or PNG |
+| Code | What the merchant sees |
+|---|---|
+| `unauthorized` / `forbidden` (copilot) | The website refreshes the Google token once. If the copilot still says no, the merchant is signed out and sees the sign-in page with a plain reason. |
+| `corpus_unavailable` | "Policy search is unavailable for a moment…". The conversation is reloaded to show its true state, and the typed text is kept. Not retried automatically. |
+| `onb_unavailable`, `history_unavailable`, `chat_unavailable`, `conversation_busy` | "Waking up / busy", with **Try again**. The website first retries reads, and writes that carry a `client_message_id`. |
+| `turn_interrupted` | The conversation is reloaded; the copilot has added an explanation. |
+| `not_found` | The merchant's latest conversation opens instead. |
 
-## Changing a contract
+## Checking a service against the contract
 
-Add fields freely: both sides ignore fields they don't know. Renaming or removing a field is a breaking change: move to `/v2/…` and keep `/v1/…` running until the website has switched.
+```
+python tools/check_contract.py --url http://127.0.0.1:5001 --token <CHAT_SERVICE_TOKEN> --merchant dev:me@example.com
+python tools/check_contract.py --url https://copilot-svc.onrender.com --token <Google access token> --merchant google:<sub>
+```
+
+This creates one conversation and checks create, list, load, a message, and a not-found error. The tests in `tests/` check every mock response the same way.
+
+## Changing the contract
+
+Add an optional field: update LLD-0002 and the schema in one pull request, and bump the minor version. Rename, remove, or change a type: that's `/v2`.

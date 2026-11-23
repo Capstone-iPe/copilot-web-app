@@ -1,123 +1,168 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ipe.example/contracts/chat_service.schema.json",
-  "title": "iPe chat service contracts (website <-> chat service), version 1",
-  "description": "Request and response bodies for the three contracts: send a chat message, load the past conversation, upload a file. Plus create/list conversations. See CONTRACTS.md.",
+  "$id": "https://github.com/Capstone-iPe/copilot-web-app/contracts/chat_service.schema.json",
+  "title": "iPe web chat <-> copilot contract, version 1.0 (frozen)",
+  "description": "Machine-checkable form of LLD-0002 in Capstone-iPe/analysis. The web chat reads only these fields. Objects are closed (additionalProperties: false): a field that is not listed here is not part of the product, including evaluation-harness fields such as injection_flagged or policy_conflict_noted and internal ONB data such as file states or verifier evidence. Adding a field needs an LLD-0002 change and a minor version bump.",
+  "x-contract-version": "1.0",
   "$defs": {
-    "ConversationId": {"type": "string", "pattern": "^c_[a-z0-9]{12}$"},
+    "ConversationId": {
+      "type": "string",
+      "pattern": "^(c_[a-z0-9]{12}|app_[0-9a-f]{12})$",
+      "description": "Opaque. The live copilot uses ONB's application id (app_ + 12 hex); the in-repo mock uses c_ + 12 characters."
+    },
+    "MessageId": {"type": "string", "pattern": "^m_[0-9a-z]{1,32}$", "description": "Opaque string."},
     "DocumentId": {"enum": ["business_registration", "owner_id", "bank_proof", "shopfront_photo", "dpa_addendum"]},
     "Status": {"enum": ["DRAFT", "IN_REVIEW", "RECOMMEND_GO_LIVE", "REFUSED"]},
+    "Outcome": {"enum": ["IN_REVIEW", "RECOMMEND_GO_LIVE", "REFUSED"]},
+    "Assignee": {"enum": ["MERCHANT_RISK_LEAD", "HEAD_OF_PAYMENTS", null]},
+    "ReviewId": {"type": ["string", "null"], "pattern": "^MR-\\d+$"},
     "StepState": {"enum": ["todo", "current", "done"]},
+    "Timestamp": {"type": "string", "description": "ISO 8601 date-time, UTC."},
 
     "Attachment": {
       "type": "object", "additionalProperties": false, "required": ["document", "filename"],
       "properties": {"document": {"$ref": "#/$defs/DocumentId"}, "filename": {"type": "string"}}
     },
+    "SummaryRow": {
+      "type": "object", "additionalProperties": false, "required": ["label", "value"],
+      "properties": {"label": {"type": "string"}, "value": {"type": "string"}}
+    },
     "SummaryCard": {
-      "type": "object", "required": ["type", "rows"],
-      "properties": {
-        "type": {"const": "summary"},
-        "rows": {"type": "array", "items": {"type": "object", "required": ["label", "value"],
-                 "properties": {"label": {"type": "string"}, "value": {"type": "string"}}}}
-      }
+      "type": "object", "additionalProperties": false, "required": ["type", "rows"],
+      "properties": {"type": {"const": "summary"}, "rows": {"type": "array", "items": {"$ref": "#/$defs/SummaryRow"}}}
     },
     "Result": {
-      "type": "object",
+      "type": "object", "additionalProperties": false,
       "required": ["outcome", "missing_items", "assignee", "review_id", "citations", "volume_inr"],
       "properties": {
-        "outcome": {"enum": ["IN_REVIEW", "RECOMMEND_GO_LIVE", "REFUSED"]},
+        "outcome": {"$ref": "#/$defs/Outcome"},
         "missing_items": {"type": "array", "items": {"$ref": "#/$defs/DocumentId"}},
-        "assignee": {"enum": ["MERCHANT_RISK_LEAD", "HEAD_OF_PAYMENTS", null]},
-        "review_id": {"type": ["string", "null"], "pattern": "^MR-\\d+$"},
+        "assignee": {"$ref": "#/$defs/Assignee"},
+        "review_id": {"$ref": "#/$defs/ReviewId"},
         "citations": {"type": "array", "items": {"type": "string"}},
-        "volume_inr": {"type": "integer"},
-        "business_type_allowed": {"type": ["boolean", "null"]},
-        "policy_conflict_noted": {"type": "boolean"}
+        "volume_inr": {"type": "integer", "minimum": 0}
       }
     },
-    "ResultCard": {"allOf": [{"$ref": "#/$defs/Result"}, {"type": "object", "required": ["type"], "properties": {"type": {"const": "result"}}}]},
+    "ResultCard": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "outcome", "missing_items", "assignee", "review_id", "citations", "volume_inr"],
+      "properties": {
+        "type": {"const": "result"},
+        "outcome": {"$ref": "#/$defs/Outcome"},
+        "missing_items": {"type": "array", "items": {"$ref": "#/$defs/DocumentId"}},
+        "assignee": {"$ref": "#/$defs/Assignee"},
+        "review_id": {"$ref": "#/$defs/ReviewId"},
+        "citations": {"type": "array", "items": {"type": "string"}},
+        "volume_inr": {"type": "integer", "minimum": 0}
+      }
+    },
     "Message": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "role", "text", "attachments", "card", "created_at"],
       "properties": {
-        "id": {"type": "integer"},
+        "id": {"$ref": "#/$defs/MessageId"},
         "role": {"enum": ["merchant", "assistant"]},
         "text": {"type": "string"},
         "attachments": {"type": "array", "items": {"$ref": "#/$defs/Attachment"}},
         "card": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/SummaryCard"}, {"$ref": "#/$defs/ResultCard"}]},
-        "created_at": {"type": "string", "format": "date-time"}
+        "created_at": {"$ref": "#/$defs/Timestamp"}
       }
     },
     "Pill": {
-      "type": "object", "required": ["label", "action"],
+      "type": "object", "additionalProperties": false, "required": ["label", "action"],
       "properties": {
         "label": {"type": "string"},
         "action": {"enum": ["send", "upload", "submit"]},
-        "value": {"type": "string", "description": "text to send when action is send"},
-        "document": {"$ref": "#/$defs/DocumentId", "description": "which document, when action is upload"}
-      }
+        "value": {"type": "string", "description": "Text to send. Required when action is send."},
+        "document": {"$ref": "#/$defs/DocumentId", "description": "Which slot. Required when action is upload."}
+      },
+      "allOf": [
+        {"if": {"properties": {"action": {"const": "send"}}}, "then": {"required": ["value"]}},
+        {"if": {"properties": {"action": {"const": "upload"}}}, "then": {"required": ["document"]}}
+      ]
     },
     "Prompt": {
-      "type": "object", "required": ["field", "kind", "input", "pills", "accept"],
+      "type": "object", "additionalProperties": false, "required": ["field", "kind", "input", "pills", "accept"],
       "properties": {
-        "field": {"type": ["string", "null"]},
+        "field": {"type": ["string", "null"], "description": "The pending field or slot, 'summary', 'change', or null after the verdict."},
         "kind": {"enum": ["text", "choice", "upload", "summary", "closed"]},
-        "input": {"type": "boolean", "description": "show the text box"},
+        "input": {"type": "boolean", "description": "Show the text box."},
         "pills": {"type": "array", "items": {"$ref": "#/$defs/Pill"}},
-        "accept": {"type": "array", "items": {"type": "string"}}
+        "accept": {"type": "array", "items": {"enum": [".pdf", ".jpg", ".jpeg", ".png"]}}
+      }
+    },
+    "Steps": {
+      "type": "object", "additionalProperties": false, "required": ["shop_details", "documents", "submitted"],
+      "properties": {
+        "shop_details": {"$ref": "#/$defs/StepState"},
+        "documents": {"$ref": "#/$defs/StepState"},
+        "submitted": {"$ref": "#/$defs/StepState"}
       }
     },
     "ConversationView": {
-      "type": "object",
+      "type": "object", "additionalProperties": false,
       "required": ["id", "shop_name", "status", "review_id", "steps", "messages", "prompt", "result", "created_at", "updated_at"],
       "properties": {
         "id": {"$ref": "#/$defs/ConversationId"},
         "shop_name": {"type": ["string", "null"]},
         "status": {"$ref": "#/$defs/Status"},
-        "review_id": {"type": ["string", "null"]},
-        "steps": {"type": "object", "required": ["shop_details", "documents", "submitted"],
-                  "properties": {"shop_details": {"$ref": "#/$defs/StepState"}, "documents": {"$ref": "#/$defs/StepState"},
-                                 "submitted": {"$ref": "#/$defs/StepState"}}},
+        "review_id": {"$ref": "#/$defs/ReviewId"},
+        "steps": {"$ref": "#/$defs/Steps"},
         "messages": {"type": "array", "items": {"$ref": "#/$defs/Message"}},
         "prompt": {"$ref": "#/$defs/Prompt"},
         "result": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/Result"}]},
-        "created_at": {"type": "string"},
-        "updated_at": {"type": "string"}
+        "created_at": {"$ref": "#/$defs/Timestamp"},
+        "updated_at": {"$ref": "#/$defs/Timestamp"}
       }
     },
     "ConversationListItem": {
-      "type": "object", "required": ["id", "shop_name", "status", "review_id", "updated_at"],
-      "properties": {"id": {"$ref": "#/$defs/ConversationId"}, "shop_name": {"type": ["string", "null"]},
-                     "status": {"$ref": "#/$defs/Status"}, "review_id": {"type": ["string", "null"]},
-                     "updated_at": {"type": "string"}}
+      "type": "object", "additionalProperties": false, "required": ["id", "shop_name", "status", "review_id", "updated_at"],
+      "properties": {
+        "id": {"$ref": "#/$defs/ConversationId"},
+        "shop_name": {"type": ["string", "null"]},
+        "status": {"$ref": "#/$defs/Status"},
+        "review_id": {"$ref": "#/$defs/ReviewId"},
+        "updated_at": {"$ref": "#/$defs/Timestamp"}
+      }
     },
 
+    "CreateConversationRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"application_id": {"$ref": "#/$defs/ConversationId", "description": "Optional: reopen this merchant's existing conversation. 404 when it is not theirs or does not exist."}}
+    },
     "SendMessageRequest": {
       "type": "object", "additionalProperties": false,
       "properties": {
         "text": {"type": "string", "maxLength": 2000},
         "action": {"enum": ["submit", null]},
-        "client_message_id": {"type": "string", "maxLength": 64, "description": "same id twice = same message (safe retry)"}
+        "client_message_id": {"type": "string", "minLength": 1, "maxLength": 128}
       }
     },
     "SendMessageResponse": {
-      "type": "object", "required": ["conversation", "reply"],
+      "type": "object", "additionalProperties": false, "required": ["conversation", "reply"],
       "properties": {"conversation": {"$ref": "#/$defs/ConversationView"}, "reply": {"$ref": "#/$defs/Message"}}
     },
+    "UploadFileResponse": {"$ref": "#/$defs/SendMessageResponse"},
     "LoadConversationResponse": {
-      "type": "object", "required": ["conversation"],
+      "type": "object", "additionalProperties": false, "required": ["conversation"],
       "properties": {"conversation": {"$ref": "#/$defs/ConversationView"}}
     },
-    "UploadFileResponse": {"$ref": "#/$defs/SendMessageResponse"},
     "CreateConversationResponse": {"$ref": "#/$defs/LoadConversationResponse"},
     "ListConversationsResponse": {
-      "type": "object", "required": ["conversations"],
+      "type": "object", "additionalProperties": false, "required": ["conversations"],
       "properties": {"conversations": {"type": "array", "items": {"$ref": "#/$defs/ConversationListItem"}}}
     },
     "Error": {
-      "type": "object", "required": ["error"],
-      "properties": {"error": {"type": "object", "required": ["code", "message"],
-                     "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}}
+      "type": "object", "additionalProperties": false, "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object", "additionalProperties": false, "required": ["code", "message"],
+          "properties": {
+            "code": {"type": "string", "description": "See the error table in LLD-0002 §6. The page picks its own wording by code; message is for logs and developers."},
+            "message": {"type": "string"}
+          }
+        }
+      }
     }
   }
 }

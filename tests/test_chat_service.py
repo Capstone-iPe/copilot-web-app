@@ -168,3 +168,11 @@ def test_callers_are_checked(chat_client):
     r = chat_client.post(f"/v1/conversations/{conv.id}/files", headers=chat_client.H,
                          data={"document": "passport", "file": (open(__file__, "rb"), "a.pdf")}, content_type="multipart/form-data")
     assert r.status_code == 400
+
+
+def test_google_bearer_must_match_merchant_id(chat_client):
+    ok = {"Authorization": "Bearer at1", "X-Merchant-Id": "google:123"}
+    bad = {"Authorization": "Bearer at1", "X-Merchant-Id": "google:999"}
+    assert chat_client.post("/v1/conversations", headers=ok).status_code == 201
+    assert chat_client.post("/v1/conversations", headers=bad).status_code == 401
+    assert chat_client.post("/v1/conversations", headers={"Authorization": "Bearer nope", "X-Merchant-Id": "google:123"}).status_code == 401

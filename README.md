@@ -51,9 +51,10 @@ ipe-onboarding/
 │       ├── llm_agent.py      template for plugging in a chat model
 │       └── documents.py      checks uploaded files (type, name match, photo age, signature)
 ├── contracts/
-│   ├── CONTRACTS.md          the three contracts explained, with examples
+│   ├── CONTRACTS.md          the frozen web chat ↔ copilot contract (v1.0; full record: analysis LLD-0002)
 │   └── chat_service.schema.json   the same, machine-checkable
 ├── tests/                    automatic tests (pytest)
+├── tools/check_contract.py   checks a running chat service (mock or live copilot) against the contract
 ├── evaluation/               test data, simulator and scorer (see evaluation/README.md)
 └── .github/workflows/tests.yml    runs the tests on GitHub after every push
 ```
@@ -125,7 +126,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 python -m pytest -q tests
 ```
 
-This runs 19 tests, covering:
+This runs 41 tests (about 30 seconds), covering:
 - the contracts (every response is checked against the schema)
 - the conversation rules: one question at a time, why-then-same-question, summary, editing answers, submit only when ready
 - uploads after the result keep the review number; refused applications have no review number
@@ -133,7 +134,7 @@ This runs 19 tests, covering:
 - development and Google sign-in, including the token refresh and expiry, using a fake Google
 - the agent against all 102 evaluation conversations
 
-All 19 should pass. How the tests work and how to read a failure: [`docs/TESTING.md`](docs/TESTING.md).
+All should pass. How the tests work and how to read a failure: [`docs/TESTING.md`](docs/TESTING.md).
 
 To score the agent with the evaluation dataset:
 
@@ -194,6 +195,14 @@ Ask **Rupesh Sasne** for the Google keys (a *client ID* and a *client secret*). 
 4. Restart (`Ctrl+C`, then `python start.py`) and open **http://localhost:5000**. Use `localhost`, not `127.0.0.1`: Google only accepts the exact address you registered.
 
 The **"Sign in with Google"** button now replaces the test sign-in.
+
+To use live copilot-svc instead of the in-repo mock chat service:
+
+```
+CHAT_SERVICE_URL=https://copilot-svc.onrender.com
+```
+
+(Google sign-in required — the site forwards the access token.)
 
 What happens behind the button is described step by step at the top of `website/auth.py`. In short:
 - The secret is used only by the server, so it never reaches the browser.

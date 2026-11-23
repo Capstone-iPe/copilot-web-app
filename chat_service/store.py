@@ -11,6 +11,8 @@ import os
 import sqlite3
 import threading
 
+from .contract import message_id, public_card
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY, merchant_id TEXT NOT NULL, agent_state TEXT NOT NULL,
@@ -27,7 +29,7 @@ CREATE TABLE IF NOT EXISTS reviews (
 
 
 def now():
-    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds")
 
 
 class Store:
@@ -69,8 +71,8 @@ class Store:
 
     def messages(self, cid):
         rows = self.db.execute("SELECT * FROM messages WHERE conversation_id=? ORDER BY id", (cid,)).fetchall()
-        return [{"id": r["id"], "role": r["role"], "text": r["text"], "attachments": json.loads(r["attachments"]),
-                 "card": json.loads(r["card"]) if r["card"] else None, "created_at": r["created_at"]} for r in rows]
+        return [{"id": message_id(r["id"]), "role": r["role"], "text": r["text"], "attachments": json.loads(r["attachments"]),
+                 "card": public_card(json.loads(r["card"])) if r["card"] else None, "created_at": r["created_at"]} for r in rows]
 
     def reply_after(self, cid, client_message_id):
         """For a retried message: the assistant reply stored right after the original."""

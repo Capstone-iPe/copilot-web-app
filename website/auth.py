@@ -8,8 +8,9 @@ How it works, step by step:
   4. We ask Google who the person is (their id, email, name) and remember them in our database.
      The browser only gets a signed session cookie that says "this is user X".
   5. Google's access token expires after about an hour. Before calling the chat service we check
-     it, and if it has expired we use the refresh token to get a new one. If Google refuses
-     (for example the merchant removed access), the merchant is signed out and asked to sign in again.
+     it, and if it has expired we use the refresh token to get a new one. That same Google access
+     token is the bearer the chat service validates with Google. If Google refuses (for example
+     the merchant removed access), the merchant is signed out and asked to sign in again.
 
 Without Google keys (GOOGLE_CLIENT_ID empty) the site offers a clearly marked development sign-in,
 so the team can run everything before the keys from Rupesh arrive. Turn it off with DEV_LOGIN=0.
@@ -31,6 +32,14 @@ REFRESH_MARGIN_S = 60
 
 class SignInRequired(Exception):
     pass
+
+
+class NotAllowed(Exception):
+    pass
+
+
+def allowed_emails(value: str) -> frozenset[str]:
+    return frozenset(part.strip().lower() for part in value.split(",") if part.strip())
 
 
 class Users:
@@ -63,9 +72,15 @@ class Users:
 
 
 class GoogleAuth:
-    def __init__(self, client_id, client_secret, redirect_uri, http=None):
+    def __init__(self, client_id, client_secret, redirect_uri, http=None, allowed=frozenset()):
         self.client_id, self.client_secret, self.redirect_uri = client_id, client_secret, redirect_uri
         self.http = http or requests  # tests pass a fake here
+        self.allowed = allowed
+
+    def email_allowed(self, email: str) -> bool:
+        if not self.allowed:
+            return True
+        return email.strip().lower() in self.allowed
 
     @property
     def configured(self):
@@ -75,7 +90,9 @@ class GoogleAuth:
         state = secrets.token_urlsafe(24)
         session["oauth_state"] = state
         q = {"client_id": self.client_id, "redirect_uri": self.redirect_uri, "response_type": "code",
-             "scope": "openid email profile", "access_type": "offline", "prompt": "consent", "state": state}
+             "scope": "openid email profile", "access_type": "offline",
+             # select_account: always show Google's account chooser; consent: needed to get a refresh token
+             "prompt": "select_account consent", "state": state}
         return AUTH_URL + "?" + urllib.parse.urlencode(q)
 
     def finish(self, session, args, users):
@@ -91,16 +108,20 @@ class GoogleAuth:
             raise SignInRequired("Google didn't accept the sign-in. Please try again.")
         t = tok.json()
         info = self.http.get(USERINFO_URL, headers={"Authorization": f"Bearer {t['access_token']}"}, timeout=10).json()
+        email = (info.get("email") or "").strip()
+        if not self.email_allowed(email):
+            raise NotAllowed()
         uid = "google:" + info["sub"]
-        users.save(uid, info.get("email"), info.get("name"), "google", t["access_token"], t.get("refresh_token"),
+        users.save(uid, email, info.get("name"), "google", t["access_token"], t.get("refresh_token"),
                    time.time() + int(t.get("expires_in", 3600)))
         return uid
 
-    def ensure_fresh(self, user, users):
-        """Refresh Google's access token if it has expired. Raises SignInRequired if that fails."""
+    def ensure_fresh(self, user, users, force=False):
+        """Refresh Google's access token if it has expired (or always, with force=True, e.g. after
+        the chat service rejected it). Raises SignInRequired if that fails."""
         if user["provider"] != "google":
             return user
-        if user["expires_at"] and user["expires_at"] - time.time() > REFRESH_MARGIN_S:
+        if not force and user["expires_at"] and user["expires_at"] - time.time() > REFRESH_MARGIN_S:
             return user
         if not user["refresh_token"]:
             raise SignInRequired("Your sign-in expired.")

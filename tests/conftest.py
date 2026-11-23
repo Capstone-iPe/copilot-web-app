@@ -15,11 +15,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from chat_service.app import create_app as create_chat  # noqa: E402
+from chat_service.google_auth import GoogleIdentity  # noqa: E402
 from website.app import create_app as create_website  # noqa: E402
 
 TOKEN = "test-token"
 SCHEMA = json.load(open(os.path.join(ROOT, "contracts", "chat_service.schema.json"), encoding="utf-8"))
 FILES = os.path.join(ROOT, "evaluation", "scenarios", "IPE-001", "files")
+
+
+class FakeGoogleChecker:
+    """Accepts the FakeGoogle access tokens used in website sign-in tests."""
+
+    def inspect(self, token: str):
+        if token in {"at1", "at2"}:
+            return GoogleIdentity(email="asha@gmail.com", subject="123", audience="CID")
+        return None
 
 
 def check(obj, name):
@@ -57,8 +67,13 @@ class InMemoryHttp:
 
 @pytest.fixture
 def chat(tmp_path):
-    app = create_chat({"DB": str(tmp_path / "chat.db"), "UPLOADS": str(tmp_path / "up"), "TOKEN": TOKEN,
-                       "TODAY": "2026-10-28"})  # the date of the IPE-001 test files
+    app = create_chat({
+        "DB": str(tmp_path / "chat.db"),
+        "UPLOADS": str(tmp_path / "up"),
+        "TOKEN": TOKEN,
+        "GOOGLE_CHECKER": FakeGoogleChecker(),
+        "TODAY": "2026-10-28",  # the date of the IPE-001 test files
+    })
     app.testing = True
     return app
 
