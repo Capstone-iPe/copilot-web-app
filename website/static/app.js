@@ -173,13 +173,29 @@ function drawPrompt(p) {
   $("text").placeholder = p.kind === "closed" ? "Ask about the result" : p.kind === "summary" ? "Submit, or say which answer to change" : "Type your answer";
 }
 
+// ---------- keep the newest message in view ----------
+// The visible area shrinks when the phone keyboard opens, the browser bar moves, buttons or a
+// banner appear, or the window is resized. If the merchant was reading the end of the
+// conversation, keep them there; if they had scrolled up to reread, leave them where they are.
+let stickToEnd = true;
+function nearEnd() { const t = $("thread"); return t.scrollHeight - t.scrollTop - t.clientHeight < 80; }
+function scrollToEnd(force) {
+  if (force) stickToEnd = true;
+  if (!stickToEnd) return;
+  requestAnimationFrame(() => { const t = $("thread"); t.scrollTop = t.scrollHeight; });
+}
+$("thread").addEventListener("scroll", () => { stickToEnd = nearEnd(); }, { passive: true });
+new ResizeObserver(() => scrollToEnd()).observe($("thread"));
+if (window.visualViewport) visualViewport.addEventListener("resize", () => scrollToEnd());
+$("text").addEventListener("focus", () => { scrollToEnd(); setTimeout(() => scrollToEnd(), 350); });
+
 function render(c) {
   conv = c;
   $("thread").replaceChildren();
   c.messages.forEach(drawMessage);
   drawSide(c);
   drawPrompt(c.prompt);
-  $("thread").scrollTop = $("thread").scrollHeight;
+  scrollToEnd(true);
   highlightShop();
 }
 
@@ -198,7 +214,7 @@ async function send({ text, action }, id) {
   const messageId = id || newId();
   showError("");
   drawMessage({ role: "merchant", text: action === "submit" ? "Submit application" : text, attachments: [] });
-  $("thread").scrollTop = $("thread").scrollHeight;
+  scrollToEnd(true);
   setBusy(true);
   try {
     const d = await api("POST", `/api/conversations/${conv.id}/messages`, { text, action: action || null, client_message_id: messageId });
@@ -232,6 +248,7 @@ async function upload(file, documentId, id) {
   const messageId = id || newId();
   showError("");
   drawMessage({ role: "merchant", text: "", attachments: [{ document: documentId, filename: file.name }] });
+  scrollToEnd(true);
   setBusy(true);
   const fd = new FormData();
   fd.append("document", documentId);
