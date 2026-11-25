@@ -35,6 +35,7 @@ const ERROR_COPY = {
   turn_interrupted: "The last message was interrupted. Your application was refreshed — check the current step.",
   not_found: "That application isn't available. It may belong to another Google account.",
   message_id_reused: "That message couldn't be sent. Try again.",
+  rate_limited: "Too many messages. Wait a minute and try again.",
 };
 // For these codes the server's message is already written for merchants.
 const SHOW_SERVER_MESSAGE = new Set(["unsupported_type", "file_too_large", "empty_message", "no_file", "bad_document"]);

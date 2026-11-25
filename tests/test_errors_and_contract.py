@@ -41,6 +41,14 @@ def err(code, message="x"):
     return {"error": {"code": code, "message": message}}
 
 
+def test_rate_limited_reaches_the_page_and_is_not_retried():
+    http = Http([Reply(429, err("rate_limited", "Too many messages. Wait a minute and try again."))] * 3)
+    status, body = ChatClient("https://copilot", "t", http).send_message(
+        "google:1", "app_abcdef123456", "Pune", client_message_id="m1")
+    assert http.calls == 1
+    assert (status, body["error"]["code"]) == (429, "rate_limited")
+
+
 def test_corpus_unavailable_reaches_the_page_and_is_not_retried():
     http = Http([Reply(502, err("corpus_unavailable", "Policy search is unavailable. (ReadTimeout)"))])
     status, body = ChatClient("https://copilot", "t", http).send_message("google:1", "app_abcdef123456", "why?",
