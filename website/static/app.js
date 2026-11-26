@@ -12,6 +12,7 @@ const ACCEPT = [".pdf", ".jpg", ".jpeg", ".png"];
 const $ = (id) => document.getElementById(id);
 let conv = null;          // the conversation currently on screen
 let busy = false;
+let loadToken = 0;        // a newer open or new shop ignores an older reply
 let uploadFor = null;     // which document the file picker is for
 
 // ---------- small helpers ----------
@@ -277,21 +278,72 @@ new ResizeObserver(() => scrollToEnd()).observe($("thread"));
 if (window.visualViewport) visualViewport.addEventListener("resize", () => scrollToEnd());
 $("text").addEventListener("focus", () => { scrollToEnd(); setTimeout(() => scrollToEnd(), 350); });
 
+function parkTyping() {
+  const typing = $("typing");
+  if (typing.parentElement === $("thread")) $("thread").after(typing);
+}
+
 function render(c) {
   conv = c;
-  $("thread").replaceChildren();
+  parkTyping();
+  $("typing").hidden = true;
+  $("shimmer").hidden = true;
+  const thread = $("thread");
+  thread.hidden = false;
+  thread.replaceChildren();
   c.messages.forEach(drawMessage);
   drawSide(c);
   drawPrompt(c.prompt);
+  thread.classList.remove("settle");
+  void thread.offsetWidth;
+  thread.classList.add("settle");
   scrollToEnd(true);
   highlightShop();
 }
 
+// A saved application: bone shapes in the window until its messages arrive.
+function showLoading(id) {
+  parkTyping();
+  $("typing").hidden = true;
+  $("thread").replaceChildren();
+  $("thread").hidden = true;
+  $("shimmer").hidden = false;
+  $("pills").replaceChildren();
+  $("composer").hidden = true;
+  const known = id && shops.find((s) => s.id === id);
+  $("shopName").textContent = known ? (known.shop_name || "New shop") : "…";
+  $("headTitle").textContent = known ? (known.shop_name || "New application") : "Opening application";
+  if (known && STATUS[known.status]) {
+    const status = $("status");
+    status.textContent = STATUS[known.status];
+    status.className = "badge " + known.status;
+  }
+  $("reviewRow").hidden = true;
+  document.querySelectorAll("#steps li").forEach((li) => { li.className = ""; });
+  document.querySelectorAll("#shops a").forEach((a) => a.setAttribute("aria-current", id && a.dataset.id === id ? "page" : "false"));
+}
+
+function clearLoading() {
+  $("shimmer").hidden = true;
+  $("thread").hidden = false;
+}
+
 // ---------- waiting for a reply ----------
+// The dots sit where the next message will appear, inside the window that is already on screen.
 function setBusy(on) {
   busy = on;
-  $("typing").hidden = !on;
-  if (on) { $("pills").replaceChildren(); $("composer").hidden = true; }
+  const typing = $("typing");
+  typing.hidden = !on;
+  if (on) {
+    $("shimmer").hidden = true;
+    $("thread").hidden = false;
+    $("thread").append(typing);
+    $("pills").replaceChildren();
+    $("composer").hidden = true;
+    scrollToEnd(true);
+  } else {
+    parkTyping();
+  }
 }
 
 // ---------- sending ----------
@@ -389,16 +441,23 @@ async function refreshShops() {
 }
 
 async function openConversation(id, push, attempt = 0, fallback = true) {
+  if (busy) return false;
   showError("");
+  const token = ++loadToken;
+  const previous = conv;
+  showLoading(id);
   try {
     const d = await api("GET", `/api/conversations/${id}`);
+    if (token !== loadToken) return false;
     if (push) history.pushState({}, "", "/c/" + id);
     render(d.conversation);
     $("side").classList.remove("open");
     return true;
   } catch (e) {
+    if (token !== loadToken) return false;
     if (e.code === "conversation_busy" && attempt < 2) {
       await new Promise((r) => setTimeout(r, 1500));
+      if (token !== loadToken) return false;
       return openConversation(id, push, attempt + 1, fallback);
     }
     if (e.code === "not_found" && fallback) {
@@ -406,24 +465,52 @@ async function openConversation(id, push, attempt = 0, fallback = true) {
       const other = shops.find((s) => s.id !== id);
       if (other) { if (await openConversation(other.id, false, 0, false)) history.replaceState({}, "", "/c/" + other.id); }
       else if (!conv) { history.replaceState({}, "", "/"); await newShop(); }
+      showFailure(e, () => openConversation(id, push));
+      return false;
     }
+    if (previous) render(previous);
+    else clearLoading();
     showFailure(e, () => openConversation(id, push));
     return false;
   }
 }
 
+// Switch the window to a blank new shop first, then show the typing dots there.
+// The dots must not play over the shop the merchant is leaving.
+function beginNewShop() {
+  showError("");
+  parkTyping();
+  $("shimmer").hidden = true;
+  $("thread").hidden = false;
+  $("thread").replaceChildren();
+  $("shopName").textContent = "New shop";
+  $("headTitle").textContent = "New application";
+  const status = $("status");
+  status.textContent = STATUS.DRAFT;
+  status.className = "badge";
+  $("reviewRow").hidden = true;
+  document.querySelectorAll("#steps li").forEach((li) => { li.className = ""; });
+  document.querySelectorAll("#shops a").forEach((a) => a.setAttribute("aria-current", "false"));
+  setBusy(true);
+}
+
 async function newShop() {
   if (busy) return;
-  setBusy(true);
+  const token = ++loadToken;
+  const previous = conv;
+  beginNewShop();
   try {
     const d = await api("POST", "/api/conversations");
+    if (token !== loadToken) return;
     setBusy(false);
     history.pushState({}, "", "/c/" + d.conversation.id);
     render(d.conversation);
     refreshShops();
   } catch (e) {
+    if (token !== loadToken) return;
     setBusy(false);
-    if (conv) render(conv);                                 // bring back the text box and buttons
+    if (previous) render(previous);
+    else clearLoading();
     showFailure(e, newShop);
   }
 }
@@ -439,12 +526,13 @@ window.onpopstate = () => { const m = location.pathname.match(CID_PATH); if (m) 
 // The list comes from the copilot's stored history, newest first. A /c/<id> link opens that
 // conversation; otherwise the most recent one opens; a merchant with none starts a new shop.
 async function init() {
+  showLoading(null);
   try {
     shops = (await api("GET", "/api/conversations")).conversations;
     drawShops();
     const m = location.pathname.match(CID_PATH);
     const id = m ? m[1] : shops.length ? shops[0].id : null;
     if (id) { await openConversation(id, !m); } else { await newShop(); }
-  } catch (e) { showFailure(e, init); }
+  } catch (e) { clearLoading(); showFailure(e, init); }
 }
 init();
