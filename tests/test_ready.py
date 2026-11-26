@@ -59,7 +59,7 @@ def test_each_health_url_is_asked_and_html_keeps_sign_in_closed() -> None:
 
     assert body["ready"] is False
     states = {item["id"]: item["state"] for item in body["services"]}
-    assert states == {"web": "up", "copilot": "waking", "onb": "up", "corpus": "waking"}
+    assert states == {"copilot": "waking", "onb": "up", "corpus": "waking"}
     assert set(http.urls) == {
         "https://copilot.example/v1/health",
         "https://onb.example/health",

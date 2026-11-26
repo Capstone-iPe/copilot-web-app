@@ -48,7 +48,6 @@ def _one(http, url: str, timeout: float) -> str:
 
 def awake() -> dict:
     services = [
-        {"id": "web", "name": "Web chat", "state": "up"},
         {"id": "copilot", "name": "Copilot", "state": "up"},
         {"id": "onb", "name": "ONB", "state": "up"},
         {"id": "corpus", "name": "Policy corpus", "state": "up"},
@@ -60,9 +59,8 @@ def snapshot(checks: list[tuple[str, str, str]], http, timeout: float = 8) -> di
     """Ask each health URL once. They run together, so a sleeping service starts waking immediately."""
     with ThreadPoolExecutor(max_workers=max(1, len(checks))) as pool:
         states = list(pool.map(lambda check: _one(http, check[2], timeout), checks))
-    services = [{"id": "web", "name": "Web chat", "state": "up"}]
-    services.extend(
+    services = [
         {"id": check[0], "name": check[1], "state": state}
         for check, state in zip(checks, states)
-    )
+    ]
     return {"ready": all(item["state"] == "up" for item in services), "services": services}
