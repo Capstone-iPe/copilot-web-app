@@ -155,8 +155,8 @@ function openWake(message, retry) {
   $("wake-retry").hidden = true;
   $("wake").setAttribute("aria-busy", "true");
   $("wake").querySelectorAll("[data-id]").forEach((row) => {
-    row.dataset.state = "asleep";
-    row.querySelector("small").textContent = "Asleep";
+    row.dataset.state = "waking";
+    row.querySelector("small").textContent = "Waking";
   });
   $("wake-modal").hidden = false;
   wakeTick();

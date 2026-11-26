@@ -39,9 +39,16 @@ def classify(response) -> str:
     return "waking"
 
 
+# A free Render service can take more than half a minute to answer its first health call.
+# Giving up sooner drops that call, so the service never finishes starting and the lamp stays on waking.
+_COLD_START = 90
+
+
 def _one(http, url: str, timeout: float) -> str:
+    # One Session shared across these threads mixes the replies up.
+    client = requests.Session() if isinstance(http, requests.Session) else http
     try:
-        return classify(http.get(url, timeout=timeout))
+        return classify(client.get(url, timeout=timeout))
     except requests.RequestException:
         return "waking"
 
@@ -55,7 +62,7 @@ def awake() -> dict:
     return {"ready": True, "services": services}
 
 
-def snapshot(checks: list[tuple[str, str, str]], http, timeout: float = 8) -> dict:
+def snapshot(checks: list[tuple[str, str, str]], http, timeout: float = _COLD_START) -> dict:
     """Ask each health URL once. They run together, so a sleeping service starts waking immediately."""
     with ThreadPoolExecutor(max_workers=max(1, len(checks))) as pool:
         states = list(pool.map(lambda check: _one(http, check[2], timeout), checks))
