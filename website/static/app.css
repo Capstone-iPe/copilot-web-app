@@ -32,6 +32,23 @@ button, input { font: inherit; }
 .dev-login input { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .dev-tag { margin: 0; font-size: 13px; background: var(--amber-soft); color: var(--amber); padding: 6px 10px; border-radius: 8px; }
 .fine { font-size: 12px; color: var(--muted); margin: 18px 0 0; }
+.wake { margin: 16px 0 4px; }
+.wake-lead { margin: 0 0 12px; color: var(--ink); }
+.wake ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.wake li { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px; background: #f3f1eb; }
+.wake-copy { display: grid; line-height: 1.2; }
+.wake-copy b { font-weight: 600; }
+.wake-copy small { color: var(--muted); }
+.lamp { width: 42px; height: 30px; border-radius: 7px 7px 4px 4px; background: #2c3038; position: relative; flex: 0 0 auto; }
+.lamp::before { content: ""; position: absolute; left: 16px; right: 16px; top: -5px; height: 5px; border-radius: 2px 2px 0 0; background: #3d424b; }
+.lamp::after { content: ""; position: absolute; inset: 5px 6px 7px; border-radius: 3px; background: #1a1d22; }
+.wake li[data-state="waking"] .lamp::after { background: #f3c16b; animation: filament 1.3s ease-in-out infinite; }
+.wake li[data-state="up"] .lamp::after { background: #d5e4fa; box-shadow: 0 0 10px #8eb4ea; }
+.wake li[data-state="down"] .lamp::after { background: #e7b4b4; }
+@keyframes filament { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .wake li[data-state="waking"] .lamp::after { animation: none; opacity: .85; }
+}
 
 /* app layout */
 /* 100dvh = the screen actually visible on phones (100vh includes space under the browser bars) */

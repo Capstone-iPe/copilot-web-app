@@ -15,8 +15,11 @@ from datetime import timedelta
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
+import requests
+
 from .auth import GoogleAuth, NotAllowed, SignInRequired, Users, allowed_emails
 from .chat_client import ChatClient, ChatServiceDown
+from .ready import awake, should_gate, snapshot
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ACCEPTED = (".pdf", ".jpg", ".jpeg", ".png")
@@ -55,6 +58,10 @@ def create_app(config=None):
         "USERS_DB": os.environ.get("WEBSITE_DB", os.path.join(HERE, "data", "website.db")),
         "COOKIE_SECURE": os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
         "CHAT_HTTP": None, "GOOGLE_HTTP": None,
+        "WAKE_CHECK": os.environ.get("WAKE_CHECK", ""),
+        "ONB_HEALTH_URL": os.environ.get("ONB_HEALTH_URL", "https://onb-k8ud.onrender.com/health"),
+        "CORPUS_HEALTH_URL": os.environ.get("CORPUS_HEALTH_URL", "https://onb-corpus.onrender.com/health"),
+        "READY_HTTP": None,
     }
     cfg.update(config or {})
     app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -72,6 +79,8 @@ def create_app(config=None):
     dev_login = cfg["DEV_LOGIN"] == "1" or (cfg["DEV_LOGIN"] == "" and not google.configured)
     users = Users(cfg["USERS_DB"])
     chat = ChatClient(cfg["CHAT_SERVICE_URL"], cfg["CHAT_SERVICE_TOKEN"], cfg["CHAT_HTTP"])
+    gate = should_gate(cfg["CHAT_SERVICE_URL"], cfg["WAKE_CHECK"])
+    ready_http = cfg["READY_HTTP"] or requests.Session()
 
     # ------------------------------------------------------------ who is signed in
     def current_user():
@@ -147,8 +156,18 @@ def create_app(config=None):
         user = current_user()
         if not user:
             return render_template("signin.html", google=google.configured, dev_login=dev_login,
-                                   error=session.pop("signin_error", None))
+                                   error=session.pop("signin_error", None), gate=gate)
         return render_template("app.html", user=user, dev=user["provider"] == "dev")
+
+    @app.get("/ready")
+    def ready():
+        if not gate:
+            return jsonify(awake())
+        return jsonify(snapshot([
+            ("copilot", "Copilot", cfg["CHAT_SERVICE_URL"].rstrip("/") + "/v1/health"),
+            ("onb", "ONB", cfg["ONB_HEALTH_URL"]),
+            ("corpus", "Policy corpus", cfg["CORPUS_HEALTH_URL"]),
+        ], ready_http))
 
     @app.get("/login")
     def login():
