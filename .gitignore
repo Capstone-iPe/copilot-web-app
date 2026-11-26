@@ -1,5 +1,6 @@
 # secrets
 .env
+*.crt
 # local data: databases and uploaded files
 chat_service/data/
 website/data/
