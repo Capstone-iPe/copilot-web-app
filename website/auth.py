@@ -72,13 +72,14 @@ class Users:
 
 
 class GoogleAuth:
-    def __init__(self, client_id, client_secret, redirect_uri, http=None, allowed=frozenset()):
+    def __init__(self, client_id, client_secret, redirect_uri, http=None, allowed=frozenset(), enforce=False):
         self.client_id, self.client_secret, self.redirect_uri = client_id, client_secret, redirect_uri
         self.http = http or requests  # tests pass a fake here
         self.allowed = allowed
+        self.enforce = enforce
 
     def email_allowed(self, email: str) -> bool:
-        if not self.allowed:
+        if not self.enforce or not self.allowed:
             return True
         return email.strip().lower() in self.allowed
 

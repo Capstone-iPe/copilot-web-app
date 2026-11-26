@@ -47,6 +47,7 @@ def create_app(config=None):
         "GOOGLE_REDIRECT_URI": os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/callback"),
         "DEV_LOGIN": os.environ.get("DEV_LOGIN", ""),
         "GOOGLE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ALLOWED_EMAILS", ""),
+        "GOOGLE_ENFORCE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ENFORCE_ALLOWED_EMAILS", ""),
         # mock chat_service: http://127.0.0.1:5001
         # live copilot:     https://copilot-svc.onrender.com
         "CHAT_SERVICE_URL": os.environ.get("CHAT_SERVICE_URL", "http://127.0.0.1:5001"),
@@ -66,7 +67,8 @@ def create_app(config=None):
                       USERS_DB=cfg["USERS_DB"])
 
     google = GoogleAuth(cfg["GOOGLE_CLIENT_ID"], cfg["GOOGLE_CLIENT_SECRET"], cfg["GOOGLE_REDIRECT_URI"],
-                         cfg["GOOGLE_HTTP"], allowed_emails(cfg["GOOGLE_ALLOWED_EMAILS"]))
+                         cfg["GOOGLE_HTTP"], allowed_emails(cfg["GOOGLE_ALLOWED_EMAILS"]),
+                         cfg["GOOGLE_ENFORCE_ALLOWED_EMAILS"].strip().lower() in {"1", "true", "yes", "on"})
     dev_login = cfg["DEV_LOGIN"] == "1" or (cfg["DEV_LOGIN"] == "" and not google.configured)
     users = Users(cfg["USERS_DB"])
     chat = ChatClient(cfg["CHAT_SERVICE_URL"], cfg["CHAT_SERVICE_TOKEN"], cfg["CHAT_HTTP"])

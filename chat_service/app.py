@@ -41,6 +41,7 @@ def create_app(config=None):
         "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID", ""),
         "GOOGLE_ALLOWED_AUDIENCES": os.environ.get("GOOGLE_ALLOWED_AUDIENCES", ""),
         "GOOGLE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ALLOWED_EMAILS", ""),
+        "GOOGLE_ENFORCE_ALLOWED_EMAILS": os.environ.get("GOOGLE_ENFORCE_ALLOWED_EMAILS", ""),
         "GOOGLE_HTTP": None,
         "GOOGLE_CHECKER": None,
         "DB": os.environ.get("CHAT_DB", os.path.join(HERE, "data", "chat.db")),
@@ -61,6 +62,7 @@ def create_app(config=None):
             audiences(cfg["GOOGLE_CLIENT_ID"], cfg["GOOGLE_ALLOWED_AUDIENCES"]),
             allowed_emails(cfg["GOOGLE_ALLOWED_EMAILS"]),
             cfg["GOOGLE_HTTP"],
+            enforce=cfg["GOOGLE_ENFORCE_ALLOWED_EMAILS"].strip().lower() in {"1", "true", "yes", "on"},
         )
 
     def make_agent():

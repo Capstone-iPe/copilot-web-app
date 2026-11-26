@@ -33,10 +33,11 @@ def allowed_emails(raw: str) -> frozenset[str]:
 class GoogleTokenChecker:
     """Looks up a Google access token. Tests may pass a fake http client."""
 
-    def __init__(self, allowed_audiences: frozenset[str], allowed: frozenset[str] = frozenset(), http=None):
+    def __init__(self, allowed_audiences: frozenset[str], allowed: frozenset[str] = frozenset(), http=None, *, enforce: bool = False):
         self.allowed_audiences = allowed_audiences
         self.allowed = allowed
         self.http = http or requests
+        self.enforce = enforce
 
     def inspect(self, token: str) -> GoogleIdentity | None:
         text = (token or "").strip()
@@ -69,6 +70,6 @@ class GoogleTokenChecker:
         if not isinstance(subject, str) or not subject.strip():
             return None
         email = email.strip().lower()
-        if self.allowed and email not in self.allowed:
+        if self.enforce and self.allowed and email not in self.allowed:
             return None
         return GoogleIdentity(email=email, subject=subject.strip(), audience=audience)

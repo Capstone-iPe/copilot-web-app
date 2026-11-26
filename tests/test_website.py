@@ -93,7 +93,7 @@ def test_only_a_listed_google_account_can_sign_in(make_website):
     listed = FakeGoogle()
     listed.email = "BasidDGP@gmail.com"
     app = make_website(GOOGLE_CLIENT_ID="CID", GOOGLE_CLIENT_SECRET="SECRET", GOOGLE_HTTP=listed,
-                       GOOGLE_ALLOWED_EMAILS=allowed)
+                       GOOGLE_ALLOWED_EMAILS=allowed, GOOGLE_ENFORCE_ALLOWED_EMAILS="1")
     c = app.test_client()
     c.get("/login")
     with c.session_transaction() as s:
@@ -104,13 +104,26 @@ def test_only_a_listed_google_account_can_sign_in(make_website):
     other = FakeGoogle()
     other.email = "other@gmail.com"
     blocked = make_website(GOOGLE_CLIENT_ID="CID", GOOGLE_CLIENT_SECRET="SECRET", GOOGLE_HTTP=other,
-                           GOOGLE_ALLOWED_EMAILS=allowed).test_client()
+                           GOOGLE_ALLOWED_EMAILS=allowed, GOOGLE_ENFORCE_ALLOWED_EMAILS="1").test_client()
     blocked.get("/login")
     with blocked.session_transaction() as s:
         state = s["oauth_state"]
     refused = blocked.get(f"/auth/callback?code=abc&state={state}")
     assert refused.status_code == 403
     assert blocked.get("/api/me").status_code == 401
+
+
+def test_the_gmail_list_is_ignored_when_enforcement_is_off(make_website):
+    other = FakeGoogle()
+    other.email = "other@gmail.com"
+    app = make_website(GOOGLE_CLIENT_ID="CID", GOOGLE_CLIENT_SECRET="SECRET", GOOGLE_HTTP=other,
+                       GOOGLE_ALLOWED_EMAILS="owner@gmail.com", GOOGLE_ENFORCE_ALLOWED_EMAILS="0")
+    c = app.test_client()
+    c.get("/login")
+    with c.session_transaction() as s:
+        state = s["oauth_state"]
+    assert c.get(f"/auth/callback?code=abc&state={state}").status_code == 302
+    assert c.get("/api/me").get_json()["email"] == "other@gmail.com"
 
 
 def test_google_sign_in_refresh_and_expiry(make_website):
