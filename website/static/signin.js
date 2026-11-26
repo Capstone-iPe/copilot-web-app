@@ -1,6 +1,7 @@
 const WORD = { asleep: "Asleep", waking: "Waking", up: "Awake", down: "Did not start" };
 const wake = document.getElementById("wake");
 const lead = document.getElementById("wake-lead");
+const note = document.getElementById("wake-note");
 const actions = document.getElementById("signin-actions");
 
 function names(services) {
@@ -11,9 +12,9 @@ function names(services) {
 
 function line(services) {
   const waking = services.filter((service) => service.state === "waking");
-  if (waking.length === 1) return `Waking ${waking[0].name}. Render is still serving its start page.`;
-  if (waking.length > 1) return `Waking ${names(waking)}.`;
-  if (services.some((service) => service.state === "down")) return "A service answered, and it did not start. Checking again.";
+  if (waking.length === 1) return `Still starting ${waking[0].name}.`;
+  if (waking.length > 1) return `Still starting ${names(waking)}.`;
+  if (services.some((service) => service.state === "down")) return "One service answered, and it did not start. Checking again.";
   return "Checking each service.";
 }
 
@@ -25,7 +26,8 @@ function paint(body) {
     row.querySelector("small").textContent = WORD[service.state] || service.state;
   }
   if (body.ready) {
-    lead.textContent = "The lights are on.";
+    lead.textContent = "All three are up.";
+    note.textContent = "They sleep again after about 15 minutes with no messages. The next message starts them if they have.";
     actions.hidden = false;
     wake.setAttribute("aria-busy", "false");
     return true;
@@ -34,12 +36,23 @@ function paint(body) {
   return false;
 }
 
+function shown() {
+  return [...wake.querySelectorAll("[data-id]")].map((row) => ({
+    name: row.querySelector("b").textContent,
+    state: row.dataset.state,
+  }));
+}
+
 async function tick() {
   try {
     const response = await fetch("/ready", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(String(response.status));
     if (paint(await response.json())) return;
   } catch (_error) {
-    lead.textContent = "Still trying to reach the services.";
+    const services = shown();
+    lead.textContent = services.some((service) => service.state !== "asleep")
+      ? line(services)
+      : "Still trying to reach the services.";
   }
   window.setTimeout(tick, 3000);
 }

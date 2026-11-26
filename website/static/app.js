@@ -27,19 +27,25 @@ function newId() { return (crypto.randomUUID ? crypto.randomUUID() : String(Date
 // What the merchant reads for each error code (LLD-0002 §6). The server's own message is kept
 // for the browser console: some codes carry developer detail that merchants should not see.
 const ERROR_COPY = {
-  corpus_unavailable: "Policy search is unavailable for a moment, so I couldn't finish that reply. Your application is safe — here is where it stands.",
-  onb_unavailable: "The onboarding service is waking up. Try again in a moment.",
-  chat_unavailable: "The chat service is waking up. Try again in a moment.",
-  history_unavailable: "Your conversation couldn't be loaded just now. Try again in a moment.",
+  corpus_unavailable: "The policy corpus did not answer, so this reply has no policy sentence. That also happens when its search model is down. Anything already saved is still saved. Here is where the application stands.",
+  onb_unavailable: "ONB, which saves the application, did not answer. It may be waking up after sitting idle, or its connection failed. This message was not saved.",
+  chat_unavailable: "The copilot did not answer. It sleeps on the free plan after about 15 minutes with no messages, or it may be down. This message was not sent.",
+  history_unavailable: "The saved conversation could not be opened. Try again in a moment.",
   conversation_busy: "This conversation is busy, perhaps in another tab. Try again in a moment.",
-  turn_interrupted: "The last message was interrupted. Your application was refreshed — check the current step.",
+  turn_interrupted: "The last message was interrupted before it finished. Your application was refreshed. Check the current step.",
   not_found: "That application isn't available. It may belong to another Google account.",
-  message_id_reused: "That message couldn't be sent. Try again.",
-  rate_limited: "Too many messages. Wait a minute and try again.",
+  message_id_reused: "That send was already used for a different message. Try again.",
+  rate_limited: "Too many messages in one minute. Wait a minute and try again.",
+  network: "This page could not reach the website. Check your connection and try again.",
 };
 // For these codes the server's message is already written for merchants.
 const SHOW_SERVER_MESSAGE = new Set(["unsupported_type", "file_too_large", "empty_message", "no_file", "bad_document"]);
 const RETRYABLE = new Set(["onb_unavailable", "chat_unavailable", "history_unavailable", "conversation_busy", "network"]);
+const WAKE_MODAL = new Set(["chat_unavailable", "onb_unavailable", "corpus_unavailable", "history_unavailable", "network"]);
+const WAKE_WORD = { asleep: "Asleep", waking: "Waking", up: "Awake", down: "Did not start" };
+let wakeTimer = 0;
+let wakeRetry = null;
+let wakeReason = "";
 
 class ApiError extends Error {
   constructor(status, code, serverMessage) {
@@ -90,8 +96,87 @@ function showError(msg, action) {
   }
 }
 
+function wakeNames(services) {
+  const list = services.map((service) => service.name);
+  if (list.length < 2) return list.join("");
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+function wakeLine(services) {
+  const waking = services.filter((service) => service.state === "waking");
+  if (waking.length === 1) return `Still starting ${waking[0].name}.`;
+  if (waking.length > 1) return `Still starting ${wakeNames(waking)}.`;
+  if (services.some((service) => service.state === "down")) return "One service answered, and it did not start. Checking again.";
+  return "Checking each service.";
+}
+
+function paintWake(body) {
+  const wake = $("wake");
+  for (const service of body.services || []) {
+    const row = wake.querySelector(`[data-id="${service.id}"]`);
+    if (!row) continue;
+    row.dataset.state = service.state;
+    row.querySelector("small").textContent = WAKE_WORD[service.state] || service.state;
+  }
+  if (body.ready) {
+    $("wake-lead").textContent = "All three are up.";
+    $("wake-note").textContent = `${wakeReason} They are answering again. Send the message once more, or sign out to open the start page.`;
+    $("wake-retry").hidden = !wakeRetry;
+    wake.setAttribute("aria-busy", "false");
+    return true;
+  }
+  $("wake-lead").textContent = wakeLine(body.services || []);
+  return false;
+}
+
+async function wakeTick() {
+  try {
+    const response = await fetch("/ready", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(String(response.status));
+    if (paintWake(await response.json())) return;
+  } catch (_error) {
+    const services = [...$("wake").querySelectorAll("[data-id]")].map((row) => ({
+      name: row.querySelector("b").textContent,
+      state: row.dataset.state,
+    }));
+    $("wake-lead").textContent = services.some((service) => service.state !== "asleep")
+      ? wakeLine(services)
+      : "Still trying to reach the services.";
+  }
+  wakeTimer = window.setTimeout(wakeTick, 3000);
+}
+
+function openWake(message, retry) {
+  window.clearTimeout(wakeTimer);
+  wakeRetry = retry || null;
+  wakeReason = message;
+  $("wake-note").textContent = message;
+  $("wake-lead").textContent = "Checking Copilot, ONB, and the policy corpus.";
+  $("wake-retry").hidden = true;
+  $("wake").setAttribute("aria-busy", "true");
+  $("wake").querySelectorAll("[data-id]").forEach((row) => {
+    row.dataset.state = "asleep";
+    row.querySelector("small").textContent = "Asleep";
+  });
+  $("wake-modal").hidden = false;
+  wakeTick();
+}
+
+$("wake-retry").onclick = () => {
+  const retry = wakeRetry;
+  window.clearTimeout(wakeTimer);
+  wakeRetry = null;
+  $("wake-modal").hidden = true;
+  if (retry) retry();
+};
+
 function showFailure(e, retry) {
   if (e.code === "sign_in_required") return;           // the page is already going to sign-in
+  if (WAKE_MODAL.has(e.code)) {
+    showError("");
+    openWake(e.message, retry);
+    return;
+  }
   showError(e.message, retry && RETRYABLE.has(e.code) ? { label: "Try again", run: retry } : null);
 }
 

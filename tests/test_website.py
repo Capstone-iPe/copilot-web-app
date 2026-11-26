@@ -22,7 +22,9 @@ def test_signin_page_and_api_needs_sign_in(make_website):
 
 def test_conversation_through_the_website(make_website):
     c = dev_signed_in(make_website())
-    assert "Your shops" in c.get("/").get_data(as_text=True)
+    page = c.get("/").get_data(as_text=True)
+    assert "Your shops" in page
+    assert 'id="wake-modal"' in page and "Sign out and start them again" in page
     H = {"X-IPE-Client": "web"}
     conv = c.post("/api/conversations", headers=H).get_json()["conversation"]
     r = c.post(f"/api/conversations/{conv['id']}/messages", headers=H, json={"text": "Lotus Tea House"})

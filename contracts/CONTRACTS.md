@@ -43,8 +43,8 @@ The rule agent still computes the exam fields for `evaluation/`. `chat_service/c
 | Code | What the merchant sees |
 |---|---|
 | `unauthorized` / `forbidden` (copilot) | The website refreshes the Google token once. If the copilot still says no, the merchant is signed out and sees the sign-in page with a plain reason. |
-| `corpus_unavailable` | "Policy search is unavailable for a moment…". The conversation is reloaded to show its true state, and the typed text is kept. Not retried automatically. |
-| `onb_unavailable`, `history_unavailable`, `chat_unavailable`, `conversation_busy` | "Waking up / busy", with **Try again**. The website first retries reads, and writes that carry a `client_message_id`. |
+| `corpus_unavailable` | The policy corpus did not answer, so there is no policy sentence. The conversation is reloaded, and the typed text is kept. Not retried automatically. |
+| `onb_unavailable`, `history_unavailable`, `chat_unavailable`, `conversation_busy` | Which service did not answer, with **Try again**. The website first retries reads, and writes that carry a `client_message_id`. |
 | `turn_interrupted` | The conversation is reloaded; the copilot has added an explanation. |
 | `not_found` | The merchant's latest conversation opens instead. |
 
