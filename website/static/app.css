@@ -18,7 +18,7 @@ button, input { font: inherit; }
 .btn:hover { filter: brightness(1.08); }
 .btn-ghost { background: transparent; color: var(--blue); width: 100%; }
 .link { background: none; border: 0; color: var(--blue); cursor: pointer; padding: 0; }
-.alert { background: var(--red-soft); color: var(--red); border-radius: 8px; padding: 8px 12px; margin: 8px 16px; }
+.alert { flex-shrink: 0; background: var(--red-soft); color: var(--red); border-radius: 8px; padding: 8px 12px; margin: 8px 16px; }
 .alert[hidden] { display: none; }
 .alert-action { margin-left: 10px; color: var(--red); font-weight: 600; text-decoration: underline; }
 
@@ -72,7 +72,7 @@ button, input { font: inherit; }
 
 /* app layout */
 /* 100dvh = the screen actually visible on phones (100vh includes space under the browser bars) */
-.layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); height: 100vh; height: 100dvh; }
+.layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); height: 100vh; height: 100dvh; max-height: 100dvh; }
 body.app-page { overflow: hidden; }
 .side { background: var(--surface); border-right: 1px solid var(--line); padding: 18px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
 .panel-title { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
@@ -102,9 +102,9 @@ body.app-page { overflow: hidden; }
 .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* chat */
-.chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.chat-head { padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--surface); font-weight: 600; display: flex; gap: 12px; }
-.thread { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.chat-head { flex-shrink: 0; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--surface); font-weight: 600; display: flex; gap: 12px; }
+.thread { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .thread[hidden] { display: none; }
 .thread.settle { animation: arrive .2s ease; }
 @keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
@@ -132,13 +132,20 @@ body.app-page { overflow: hidden; }
 .card tr:first-child td { border-top: 0; }
 .result-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
 .result-head strong { color: var(--blue); letter-spacing: .03em; }
-.pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px 10px; }
-.pill { border: 1px solid #8b8f97; background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 13px; cursor: pointer; }
+.pills { flex-shrink: 0; min-width: 0; display: flex; flex-wrap: nowrap; gap: 8px; padding: 0 20px 10px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.pills:empty { display: none; }
+.pills::-webkit-scrollbar { display: none; }
+.pill { flex: 0 0 auto; white-space: nowrap; border: 1px solid #8b8f97; background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 13px; cursor: pointer; }
 .pill:hover { border-color: var(--blue); color: var(--blue); }
+.pill:disabled { opacity: .45; cursor: default; }
+.pill:disabled:hover { border-color: #8b8f97; color: var(--ink); }
 .pill.primary { border-color: var(--blue); background: var(--blue); color: #fff; }
 .pill.upload { border-color: var(--blue); color: var(--blue); }
-.composer { display: flex; gap: 8px; padding: 12px 20px calc(16px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+.composer { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 12px 20px calc(16px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
 .composer[hidden] { display: none; }
+.composer .send { flex-shrink: 0; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn:disabled:hover { filter: none; }
 /* 16px stops iPhone Safari from zooming the whole page when the box is tapped */
 .composer input[type=text] { flex: 1; min-width: 0; border: 1px solid #8b8f97; border-radius: 8px; padding: 10px 12px; font-size: 16px; }
 
@@ -155,13 +162,12 @@ body.app-page { overflow: hidden; }
 
 .only-mobile { display: none; }
 @media (max-width: 760px) {
-  .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  /* The side is out of the grid until Details is opened. One stretching row keeps
+     the send bar on the bottom of the window while the page is resized. */
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .layout:has(.side.open) { grid-template-rows: auto minmax(0, 1fr); }
   .side { display: none; border-right: 0; border-bottom: 1px solid var(--line); }
   .side.open { display: flex; max-height: 55dvh; }
-  /* one row of suggestion buttons that scrolls sideways, so the conversation keeps its room */
-  .pills { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-  .pills::-webkit-scrollbar { display: none; }
-  .pill { flex: 0 0 auto; white-space: nowrap; }
   .only-mobile { display: inline; }
   .msg { max-width: 88%; }
   .thread, .shimmer, .pills, .composer { padding-left: 12px; padding-right: 12px; }

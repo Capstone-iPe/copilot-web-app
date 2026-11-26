@@ -329,17 +329,19 @@ function clearLoading() {
 }
 
 // ---------- waiting for a reply ----------
-// The dots sit where the next message will appear, inside the window that is already on screen.
+// The dots sit where the next message will appear. The send bar stays where it is;
+// only Send is disabled, so a resize or a reply cannot move that bar.
 function setBusy(on) {
   busy = on;
   const typing = $("typing");
   typing.hidden = !on;
+  const send = $("composer").querySelector(".send");
+  if (send) send.disabled = on;
+  document.querySelectorAll("#pills button").forEach((b) => { b.disabled = on; });
   if (on) {
     $("shimmer").hidden = true;
     $("thread").hidden = false;
     $("thread").append(typing);
-    $("pills").replaceChildren();
-    $("composer").hidden = true;
     scrollToEnd(true);
   } else {
     parkTyping();
@@ -415,6 +417,7 @@ $("file").onchange = () => {
 
 $("composer").onsubmit = (e) => {
   e.preventDefault();
+  if (busy) return;
   const t = $("text").value.trim();
   if (!t) return;
   $("text").value = "";
@@ -491,6 +494,8 @@ function beginNewShop() {
   $("reviewRow").hidden = true;
   document.querySelectorAll("#steps li").forEach((li) => { li.className = ""; });
   document.querySelectorAll("#shops a").forEach((a) => a.setAttribute("aria-current", "false"));
+  $("pills").replaceChildren();
+  $("composer").hidden = true;
   setBusy(true);
 }
 
