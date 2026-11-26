@@ -149,6 +149,15 @@ def create_app(config=None):
         wrapper.__name__ = fn.__name__
         return wrapper
 
+    def _wake_urls():
+        if not gate:
+            return None
+        return {
+            "copilot": cfg["CHAT_SERVICE_URL"].rstrip("/") + "/v1/health",
+            "onb": cfg["ONB_HEALTH_URL"],
+            "corpus": cfg["CORPUS_HEALTH_URL"],
+        }
+
     # ------------------------------------------------------------ pages
     @app.get("/")
     @app.get("/c/<cid>")
@@ -156,8 +165,10 @@ def create_app(config=None):
         user = current_user()
         if not user:
             return render_template("signin.html", google=google.configured, dev_login=dev_login,
-                                   error=session.pop("signin_error", None), gate=gate)
-        return render_template("app.html", user=user, dev=user["provider"] == "dev")
+                                   error=session.pop("signin_error", None), gate=gate,
+                                   wake_urls=_wake_urls())
+        return render_template("app.html", user=user, dev=user["provider"] == "dev",
+                               wake_urls=_wake_urls())
 
     @app.get("/ready")
     def ready():

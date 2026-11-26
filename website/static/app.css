@@ -63,6 +63,7 @@ button, input { font: inherit; }
   .wake li[data-state="waking"] .lamp::after { filter: none; }
   .wake li[data-state="waking"]::after { transform: none; width: 55%; }
 }
+.wake-poke { position: absolute; width: 1px; height: 1px; opacity: 0; border: 0; pointer-events: none; }
 .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: rgba(27, 29, 33, .35); }
 .modal[hidden] { display: none; }
 .modal-card { width: min(100%, 420px); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }

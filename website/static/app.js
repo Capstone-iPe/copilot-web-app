@@ -131,6 +131,8 @@ function paintWake(body) {
 
 async function wakeTick() {
   try {
+    const wake = $("wake");
+    await holdHealth([wake.dataset.copilot, wake.dataset.onb, wake.dataset.corpus]);
     const response = await fetch("/ready", { headers: { Accept: "application/json" } });
     if (!response.ok) throw new Error(String(response.status));
     if (paintWake(await response.json())) return;

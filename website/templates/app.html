@@ -56,7 +56,8 @@
 </div>
 <div class="modal" id="wake-modal" hidden>
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="wake-lead">
-    <section class="wake" id="wake" aria-live="polite">
+    <section class="wake" id="wake" aria-live="polite"
+             {% if wake_urls %}data-copilot="{{ wake_urls.copilot }}" data-onb="{{ wake_urls.onb }}" data-corpus="{{ wake_urls.corpus }}"{% endif %}>
       <p class="wake-lead" id="wake-lead">Checking Copilot, ONB, and the policy corpus.</p>
       <p class="wake-note" id="wake-note">These services sleep on Render's free plan after about 15 minutes with no messages. This check starts them again.</p>
       <ol>
@@ -73,6 +74,7 @@
     </div>
   </div>
 </div>
+<script src="{{ url_for('static', filename='wake.js') }}"></script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

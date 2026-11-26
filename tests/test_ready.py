@@ -86,6 +86,8 @@ def test_the_sign_in_page_hides_google_until_health_is_json(make_website) -> Non
     assert 'id="signin-actions" hidden' in page
     assert "Sign in with Google" in page
     assert "Render's free plan" in page
+    assert 'data-copilot="https://copilot.example/v1/health"' in page
+    assert "wake.js" in page
     body = app.test_client().get("/ready").get_json()
     assert body["ready"] is False
     assert {item["id"]: item["state"] for item in body["services"]}["copilot"] == "waking"

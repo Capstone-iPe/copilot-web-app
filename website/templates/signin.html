@@ -15,7 +15,8 @@
     {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
 
     {% if gate %}
-    <section class="wake" id="wake" aria-live="polite">
+    <section class="wake" id="wake" aria-live="polite"
+             data-copilot="{{ wake_urls.copilot }}" data-onb="{{ wake_urls.onb }}" data-corpus="{{ wake_urls.corpus }}">
       <p class="wake-lead" id="wake-lead">Starting Copilot, ONB, and the policy corpus.</p>
       <p class="wake-note" id="wake-note">These services sleep on Render's free plan after about 15 minutes with no one using them. This page starts them again. Sign-in stays hidden until each one answers, usually within a minute.</p>
       <ol>
@@ -49,6 +50,7 @@
     </div>
     <p class="fine">iPe is fictional. This is a student project.</p>
   </main>
-  {% if gate %}<script src="{{ url_for('static', filename='signin.js') }}"></script>{% endif %}
+  {% if gate %}<script src="{{ url_for('static', filename='wake.js') }}"></script>
+  <script src="{{ url_for('static', filename='signin.js') }}"></script>{% endif %}
 </body>
 </html>

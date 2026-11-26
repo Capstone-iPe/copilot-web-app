@@ -39,9 +39,10 @@ def classify(response) -> str:
     return "waking"
 
 
-# A free Render service can take more than half a minute to answer its first health call.
-# Giving up sooner drops that call, so the service never finishes starting and the lamp stays on waking.
-_COLD_START = 90
+# The sign-in page opens each health URL in the browser and keeps it open for 90 seconds.
+# A request made only by this server does not make Render start a sleeping free service,
+# and dropping it early cancels the start. This call just reads the result afterwards.
+_COLD_START = 10
 
 
 def _one(http, url: str, timeout: float) -> str:
