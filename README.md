@@ -23,25 +23,51 @@ Pills on the live copilot are upload and submit. The mock agent still offers ans
 
 ## Run on a laptop
 
+Python 3.12. Two ways to open the page. The mock needs nothing else. The real copilot needs the other three services already running.
+
 ```bash
-python3 -m venv .venv
+git clone https://github.com/Capstone-iPe/copilot-web-app.git
+cd copilot-web-app
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+### Mock chat, no keys
+
+```bash
 python start.py
 ```
 
-Open http://localhost:5000. With no `.env`, the site shows **Continue as test merchant** and the mock rules agent answers.
+Open http://localhost:5000. With no `.env`, the site shows **Continue as test merchant** and the in-repo rules agent answers on port 5001. That agent is for exercising the page. It is not the product.
 
-To point the same website at the live copilot, copy `.env.example` to `.env` and set:
+### This website in front of a local copilot
+
+Start [onb-corpus](https://github.com/Capstone-iPe/onb-corpus) on port 8081, [onb-svc](https://github.com/Capstone-iPe/onb-svc) on port 8000, and [copilot-svc](https://github.com/Capstone-iPe/copilot-svc) on port 8080. The [analysis README](https://github.com/Capstone-iPe/analysis#run-the-services-locally) has the clone layout, Postgres, the hosted keys, and the Google client. Register `http://localhost:5000/auth/callback` as an authorized redirect URI on that client.
 
 ```bash
-CHAT_SERVICE_URL=https://copilot-svc.onrender.com
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REDIRECT_URI=http://localhost:5000/auth/callback
+cp .env.example .env
 ```
 
-Sign-in then uses Google, and the page forwards that access token. The copilot and ONB must accept the same Google client.
+Set these in `.env`. Generate `SECRET_KEY` with `python -c "import secrets; print(secrets.token_hex(32))"`.
+
+```bash
+SECRET_KEY=<32-byte hex>
+WEBSITE_PORT=5000
+GOOGLE_CLIENT_ID=<same client id as the copilot and ONB>
+GOOGLE_CLIENT_SECRET=<same client secret as ONB>
+GOOGLE_REDIRECT_URI=http://localhost:5000/auth/callback
+GOOGLE_ENFORCE_ALLOWED_EMAILS=0
+SESSION_COOKIE_SECURE=0
+CHAT_SERVICE_URL=http://127.0.0.1:8080
+DEV_LOGIN=0
+```
+
+`python -m website.app` reads `.env` and serves http://localhost:5000. Sign in with Google. The page sends that access token to the copilot. The copilot and ONB must be configured with this same client id, or the chat answers that the sign-in was rejected.
+
+To use the Render copilot instead of a local one, set `CHAT_SERVICE_URL=https://copilot-svc.onrender.com` and keep the Google values. The Render services accept the Google client configured on that deployment. A client you create for localhost is the one the local copilot and local ONB check.
+
+## Tests
 
 ```bash
 python -m pytest -q tests
